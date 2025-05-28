@@ -205,7 +205,7 @@ async function sendImage() {
 
 document.getElementById('ask').addEventListener('click', sendText());
 
-document.getElementById('search').addEventListener('keypress', function (event) => {
+document.getElementById('search').addEventListener('keypress', function(event) {
 	
   if (event.key === "Enter") {
 	  
