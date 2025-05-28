@@ -205,15 +205,15 @@ async function sendImage() {
 
 document.getElementById('ask').addEventListener('click', sendText());
 
-document.getElementById('search').addEventListener('keypress', async (event) => {
+document.getElementById('search').addEventListener('keypress', function (event) => {
 	
   if (event.key === "Enter") {
 	  
     event.preventDefault();
 	  
-    document.getElementById('ask).click();
+    document.getElementById('ask').click();
 			    
-  }
+  });
 
 document.getElementById('image'). addEventListener('click',sendImage());
 
