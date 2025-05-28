@@ -212,6 +212,8 @@ document.getElementById('search').addEventListener('keypress', function (event) 
     event.preventDefault();
 	  
     document.getElementById('ask').click();
+
+  }
 			    
   });
 
