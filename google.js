@@ -203,9 +203,9 @@ async function sendImage() {
 
 }
 
-document.getElementById('ask').addEventListener('click', sendText());
+document.getElementById('ask').addEventListener('click', await sendText());
 
-document.getElementById('image'). addEventListener('click',sendImage());
+document.getElementById('image'). addEventListener('click', await sendImage());
 
 async function load() {
 
