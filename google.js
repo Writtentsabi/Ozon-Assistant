@@ -205,16 +205,6 @@ async function sendImage() {
 
 document.getElementById('ask').addEventListener('click', sendText());
 
-document.getElementById('search').addEventListener('keypress', function(event) {
-	
-  if (event.key === "Enter") {
-	  
-    document.getElementById('ask').click();
-
-  }
-			    
-  });
-
 document.getElementById('image'). addEventListener('click',sendImage());
 
 async function load() {
