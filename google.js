@@ -10,7 +10,7 @@ const ai = new GoogleGenAI({
 
 const historyArray = [];
 
-function getWords() {
+async function getWords() {
 
 	const prompt = document.getElementById('search').value;
 
@@ -98,7 +98,7 @@ function getWords() {
 
 }
 
-function getImages() {
+async function getImages() {
 
 	const prompt = document.getElementById('search').value;
 
@@ -203,9 +203,9 @@ function getImages() {
 
 }
 
-document.getElementById('ask').addEventListener('click', getWords());
+document.getElementById('ask').addEventListener('click', await getWords());
 
-document.getElementById('image').addEventListener('click', getImages());
+document.getElementById('image').addEventListener('click', await getImages());
 
 async function load() {
 
