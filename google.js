@@ -209,8 +209,6 @@ document.getElementById('search').addEventListener('keypress', function(event) {
 	
   if (event.key === "Enter") {
 	  
-    event.preventDefault();
-	  
     document.getElementById('ask').click();
 
   }
