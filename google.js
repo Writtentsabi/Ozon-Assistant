@@ -10,7 +10,7 @@ const ai = new GoogleGenAI({
 
 const historyArray = [];
 
-async function getWords() {
+document.getElementById('ask').addEventListener('click', async() => {
 
 	const prompt = document.getElementById('search').value;
 
@@ -95,72 +95,12 @@ async function getWords() {
 	document.getElementById('image').disabled = false;
 
 	console.log(response);
+	
+});
 
-}
+document.getElementById('image').addEventListener('click', async() => {
 
-async function getImages() {
-
-	const prompt = document.getElementById('search').value;
-
-	const prompts = document.querySelector('.prompt-list');
-
-	const thoughts = ['Generating Image...', 'Ahh...', 'Loading Graphics...', 'LoAdInG BlIp BlOp'];
-
-	let input = document.createElement('li');
-
-	input.setAttribute('class',
-		'input-prompt');
-
-	input.setAttribute('id',
-		'question');
-
-	input.innerHTML = document.getElementById('search').value;
-
-	prompts.appendChild(input);
-
-	document.getElementById('search').value = thoughts[Math.floor(Math.random()*thoughts.length)];;
-
-	document.getElementById('search').disabled = true;
-
-	document.getElementById('ask').disabled = true;
-
-	document.getElementById('image').disabled = true;
-
-	fetch('https://api.aimlapi.com/v1/images/generations',
-		{
-
-			method: 'POST',
-
-			headers: {
-
-				"Authorization": "Bearer c5e2b3bc85294537a3e0fb77fe476e6f",
-
-				"Content-Type": "application/json"
-
-			},
-
-			body: JSON.stringify({
-
-				"model": "flux-pro",
-
-				"prompt": prompt,
-
-				"num_images": 1,
-
-				"output_format": "jpeg",
-
-				"safety_tolerance": "5",
-
-			})
-
-		}).then((res) => res.json()).then(image=> {
-
-			let output = document.createElement('li');
-
-			let outputImg = document.createElement('img');
-
-			let outputTxt = document.createElement('div');
-
+	
 			output.setAttribute('class', 'output-prompt');
 
 			outputImg.setAttribute('class', 'output-image');
@@ -198,14 +138,8 @@ async function getImages() {
 			document.getElementById('image').disabled = false;
 
 			console.log(image);
-
-		})
-
-}
-
-document.getElementById('ask').addEventListener('click', async()=>{await getWords();});
-
-document.getElementById('image').addEventListener('click', async()=>{await getImages();});
+	
+});
 
 async function load() {
 
