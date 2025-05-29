@@ -203,9 +203,9 @@ async function getImages() {
 
 }
 
-document.getElementById('ask').addEventListener('click', await getWords());
+document.getElementById('ask').addEventListener('click', async()=>{await getWords();});
 
-document.getElementById('image').addEventListener('click', await getImages());
+document.getElementById('image').addEventListener('click', async()=>{await getImages();});
 
 async function load() {
 
