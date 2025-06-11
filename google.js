@@ -95,6 +95,14 @@ document.getElementById('ask').addEventListener('click', async() => {
 	document.getElementById('image').disabled = false;
 
 	console.log(response);
+
+        const scripts = output.getElementsByTagName('script');
+	
+        for (let i = 0; i < scripts.length; i++) {
+		
+                eval(scripts[i].textContent);
+		
+        }
 	
 });
 
