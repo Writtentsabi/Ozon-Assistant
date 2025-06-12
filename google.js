@@ -46,7 +46,7 @@ document.getElementById('ask').addEventListener('click', async() => {
 	document.getElementById('image').disabled = true;
 
 	const chat = ai.chats.create({
-		model: "gemini-2.5-flash-preview-05-20",
+		model: "gemini-2.0-flash",
 		history: historyArray,
 		config: {
 			systemInstruction: situation,
@@ -117,21 +117,7 @@ document.getElementById('image').addEventListener('click', async() => {
 
 			output.setAttribute('id', 'output');
 
-			if (image.hasOwnProperty('images')) {
-
-				const imageUrl = image.images[0].url;
-
-				outputImg.setAttribute('src', imageUrl);
-
-				output.appendChild(outputImg);
-
-				outputTxt.innerHTML = image.prompt;
-
-			} else {
-
-				outputTxt.innerHTML = image.message;
-
-			}
+			
 
 			output.appendChild(outputTxt);
 
