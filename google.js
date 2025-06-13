@@ -46,7 +46,7 @@ document.getElementById('ask').addEventListener('click', async() => {
 	document.getElementById('image').disabled = true;
 
 	const chat = ai.chats.create({
-		model: "gemini-2.0-flash",
+		model: "gemini-2.5-flash-preview-05-20",
 		history: historyArray,
 		config: {
 			systemInstruction: situation,
