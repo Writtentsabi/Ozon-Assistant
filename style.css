@@ -85,6 +85,13 @@ body {
 
 	border-bottom-right-radius: 30px;
 
+	background: linear-gradient(#131219, #131219) padding-box, linear-gradient(
+        var(--angle),
+        #070707,
+        #687aff
+      ) border-box;
+  animation: 8s rotate linear infinite;
+
 }
 
 .output-prompt {
