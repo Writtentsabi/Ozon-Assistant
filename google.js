@@ -1,6 +1,6 @@
 import {
 	GoogleGenAI
-} from "https://cdn.jsdelivr.net/npm/@google/genai@latest/+esm";
+} from "@google/genai";
 
 window.GoogleGenAI = GoogleGenAI;
 
