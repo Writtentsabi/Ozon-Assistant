@@ -1,6 +1,6 @@
 import {
 	GoogleGenAI
-} from "https://registry.npmjs.org/@google/genai/-/genai-1.30.0.tgz";
+} from "@google/genai";
 
 window.GoogleGenAI = GoogleGenAI;
 
