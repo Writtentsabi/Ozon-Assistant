@@ -2,8 +2,6 @@ import {
 	GoogleGenAI
 } from "@google/genai";
 
-window.GoogleGenAI = GoogleGenAI;
-
 const ai = new GoogleGenAI({
 	apiKey: "AIzaSyCemcIdeLj2HCWJIY931LVToyNu6ASPAAg"
 });
