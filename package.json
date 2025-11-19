@@ -1,5 +1,15 @@
 {
+  "name": "ozon-assistant",
+  "version": "1.0.0",
+  "description": "...",
+  "main": "google.js",
+  "type": "module",
+  "scripts": {
+    "start": "node google.js"
+  },
   "dependencies": {
-    "@google/genai": "^1.30.0"
+    "@google/genai": "^1.30.0",
+    "dotenv": "AIzaSyAuMsUkHWpwXMhY4jt0xbP2T0ATzzYWkf8"
   }
 }
+
