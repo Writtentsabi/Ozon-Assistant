@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
-    "dotenv": "AIzaSyAuMsUkHWpwXMhY4jt0xbP2T0ATzzYWkf8"
   }
 }
 
