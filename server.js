@@ -25,7 +25,7 @@ app.post('/api/chat', async (req, res) => {
     // ... (Εδώ μπορείτε να χειριστείτε το historyArray στον server αν θέλετε)
 
     const chat = ai.chats.create({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.0-flash",
         history: req.body.history || [], // Πρέπει να στέλνει το history από τον client
         config: {
             systemInstruction: "Your name is Ozor, you are the personal assistant...",
