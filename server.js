@@ -58,7 +58,7 @@ app.post('/api/generate-image', async (req, res) => {
     }
 
     // Το μοντέλο Stable Diffusion που θα χρησιμοποιήσουμε
-    const modelUrl = 'https://router.huggingface.co/models/stabilityai/stable-diffusion-2-1';
+    const modelUrl = 'https://router.huggingface.co/models/SG161222/Realistic_Vision_V6.0_B1_noVAE';
 
     try {
         // Κλήση στο Hugging Face Inference API
