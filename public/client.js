@@ -131,7 +131,7 @@ imageButton.addEventListener('click', async () => {
     let inputLi = document.createElement('li'); 
     inputLi.setAttribute('class', 'input-prompt'); 
     inputLi.setAttribute('id', 'question'); 
-    inputLi.innerHTML = `🖼️ **Δημιουργία Εικόνας:** ${prompt}`; 
+    inputLi.innerHTML = `🖼️ <strong>Δημιουργία Εικόνας:</strong> ${prompt}`; 
     promptsContainer.appendChild(inputLi); 
 
     // --- 2. UI State Changes (Απενεργοποίηση, Placeholder) --- 
