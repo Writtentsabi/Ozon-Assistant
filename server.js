@@ -62,7 +62,7 @@ app.post('/api/generate-image', async (req, res) => {
     }
 
     // Διορθωμένο URL και μοντέλο (Stable Diffusion v1-4)
-    const modelUrl = 'https://router.huggingface.co/models/CompVis/stable-diffusion-v1-4';
+    const modelUrl = 'https://router.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0';
 
     // Ρυθμίσεις Επανάληψης
     const maxRetries = 3;
