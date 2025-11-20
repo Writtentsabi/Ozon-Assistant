@@ -25,10 +25,10 @@ app.post('/api/chat', async (req, res) => {
     // ... (Εδώ μπορείτε να χειριστείτε το historyArray στον server αν θέλετε)
 
     const chat = ai.chats.create({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.5-flash",
         history: req.body.history || [], // Πρέπει να στέλνει το history από τον client
         config: {
-            systemInstruction: "Your name is Ozor, you are the personal assistant...",
+            systemInstruction: "Your name is Ozor, you are the personal assistant for the Ozon Browser. An app uploaded also on Play Store. You are interacting through an html website, so you should write your answers as an innerHTML",
         },
     });
 
