@@ -3,7 +3,7 @@
 import 'dotenv/config'; 
 import express from 'express'; 
 import { GoogleGenAI } from "@google/genai";
-import { Buffer } from 'buffer'; 
+import { Buffer } from 'buffer'; // Απαραίτητο για τη διαχείριση δυαδικών δεδομένων
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -53,13 +53,13 @@ app.post('/api/generate-image', async (req, res) => {
     
     try {
         const response = await ai.models.generateImages({
-            // Χρήση του Imagen, το οποίο είναι ενσωματωμένο στη βιβλιοθήκη Gemini SDK
+            // Διορθωμένο μοντέλο για να λειτουργεί με την τρέχουσα έκδοση της βιβλιοθήκης
             model: 'imagen-3.0-generate-002', 
             prompt: prompt,
             config: {
                 numberOfImages: 1,
                 outputMimeType: 'image/jpeg',
-                aspectRatio: '1:1', // Μπορείτε να δοκιμάσετε '16:9' ή '4:3'
+                aspectRatio: '1:1',
             }
         });
 
