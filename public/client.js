@@ -70,6 +70,8 @@ askButton.addEventListener('click', async () => {
                 errorMessage = '🛑 Υπέρβαση Ορίου Gemini API (429). Παρακαλώ περιμένετε 1-2 λεπτά και δοκιμάστε ξανά.';
             } else if (status === 500) {
                  errorMessage = '⚠️ Ο server αντιμετώπισε ένα εσωτερικό σφάλμα.';
+            } else if (status === 404) {
+                 errorMessage = '🚫 Σφάλμα 404: Δεν βρέθηκε το endpoint συνομιλίας στον server.';
             } else if (status >= 400) {
                  errorMessage = `Σφάλμα ${status}. Το αίτημα απέτυχε.`;
             }
@@ -150,10 +152,14 @@ imageButton.addEventListener('click', async () => {
             const status = response.status;
             let errorMessage = 'Σφάλμα επικοινωνίας με τον server κατά τη δημιουργία εικόνας.';
 
-            if (status === 429 || status === 503) { 
-                errorMessage = '🛑 Υπέρβαση Ορίου / Υπηρεσία απασχολημένη. Παρακαλώ περιμένετε 1 λεπτό και δοκιμάστε ξανά.';
+            if (status === 503) { 
+                errorMessage = '🛑 Υπηρεσία απασχολημένη (Spin Up). Παρακαλώ περιμένετε 1 λεπτό και δοκιμάστε ξανά.';
+            } else if (status === 429) {
+                 errorMessage = '🛑 Υπέρβαση Ορίου API (429). Παρακαλώ περιμένετε 1-2 λεπτά και δοκιμάστε ξανά.';
             } else if (status === 500) {
                  errorMessage = '⚠️ Ο server αντιμετώπισε ένα εσωτερικό σφάλμα.';
+            } else if (status === 404) {
+                 errorMessage = '🚫 Σφάλμα 404: Δεν βρέθηκε το endpoint εικόνας στον server.';
             } else if (status >= 400) {
                  errorMessage = `Σφάλμα ${status}. Το αίτημα απέτυχε.`;
             }
@@ -174,9 +180,9 @@ imageButton.addEventListener('click', async () => {
         outputLi.setAttribute('class', 'output-prompt'); 
         outputLi.setAttribute('id', 'output'); 
 
-        // ➡️ Επιστροφή σε Base64 logic (όπως πριν το DeepAI)
+        // ➡️ ΧΕΙΡΙΣΜΟΣ BASE64 ΔΕΔΟΜΕΝΩΝ ΑΠΟ ΤΟ HUGGING FACE
         const base64Data = data.image; 
-        const mimeType = data.mimeType || "image/jpeg"; // Χρησιμοποιούμε τον MIME type από τον server
+        const mimeType = data.mimeType || "image/jpeg"; 
         
         if (base64Data) {
             const imageUrl = `data:${mimeType};base64,${base64Data}`;
@@ -193,6 +199,7 @@ imageButton.addEventListener('click', async () => {
                                   <em>${data.text || ' (Δεν υπήρχε συνοδευτικό κείμενο) '}</em>`;
             outputLi.appendChild(imageElement);
         } else {
+            // Αυτό θα εμφανιστεί αν ο server επέστρεψε JSON αλλά χωρίς εικόνα
             outputLi.innerHTML = `❌ <strong>Σφάλμα:</strong> Δεν ελήφθη Base64 εικόνας από τον server.`;
         }
 
