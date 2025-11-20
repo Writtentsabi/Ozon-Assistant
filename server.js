@@ -59,7 +59,7 @@ app.post('/api/generate-image', async (req, res) => {
             headers: {
                 "Content-Type": "application/json",
                 // Μπορείτε να προσθέσετε το κλειδί σας εδώ αν το DeepAI σας ζητήσει για καλύτερα μοντέλα:
-                // 'Api-Key': process.env.DEEPAI_API_KEY, 
+                'Api-Key': process.env.DEEPAI_API_KEY, 
             },
             body: JSON.stringify({
                 text: prompt,
