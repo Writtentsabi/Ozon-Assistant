@@ -3,18 +3,16 @@
 import 'dotenv/config'; 
 import express from 'express'; 
 import { GoogleGenAI } from "@google/genai";
-// Υποθέτουμε ότι το περιβάλλον Node.js υποστηρίζει το παγκόσμιο fetch.
-// Αν όχι, θα χρειαστείτε: import fetch from 'node-fetch'; 
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ΑΣΦΑΛΕΙΑ: Χρήση του κλειδιού από το Render Environment
+// ΑΣΦΑΛΕΙΑ: Χρήση των κλειδιών από το Environment
 const ai = new GoogleGenAI({ 
     apiKey: process.env.GEMINI_API_KEY 
 });
 
-// 1. Ρύθμιση για Static Files (HTML, CSS, Client JS)
+// 1. Ρύθμιση για Static Files
 app.use(express.static('public')); 
 app.use(express.json());          
 
@@ -44,47 +42,61 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
-// 3. Το API Endpoint για Δημιουργία Εικόνων (ΝΕΟ - ΧΡΗΣΗ DeepAI ως δωρεάν εναλλακτική)
+// 3. Το API Endpoint για Δημιουργία Εικόνων (ΝΕΟ - ΧΡΗΣΗ Hugging Face)
 app.post('/api/generate-image', async (req, res) => {
     const { prompt } = req.body;
 
     if (!prompt) {
         return res.status(400).json({ error: "Missing prompt for image generation." });
     }
+    
+    // Απαιτείται το Hugging Face Token για εξουσιοδότηση
+    const HUGGINGFACE_TOKEN = process.env.HUGGINGFACE_TOKEN;
+
+    if (!HUGGINGFACE_TOKEN) {
+        return res.status(500).json({ error: "Hugging Face Token is not configured." });
+    }
+
+    // Το μοντέλο Stable Diffusion που θα χρησιμοποιήσουμε
+    const modelUrl = 'https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5';
 
     try {
-        // Κλήση στο DeepAI Text2Img API
-        const response = await fetch("https://api.deepai.org/api/text2img", {
+        // Κλήση στο Hugging Face Inference API
+        const response = await fetch(modelUrl, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                // Μπορείτε να προσθέσετε το κλειδί σας εδώ αν το DeepAI σας ζητήσει για καλύτερα μοντέλα:
-                'Api-Key': process.env.DEEPAI_API_KEY, 
+                // Χρήση Bearer Token
+                "Authorization": `Bearer ${HUGGINGFACE_TOKEN}`,
             },
             body: JSON.stringify({
-                text: prompt,
+                inputs: prompt,
             }),
         });
 
-        if (!response.ok) {
-            console.error("DeepAI API Error:", response.status, response.statusText);
-            // Επιστροφή σφάλματος 429 αν υπερβεί το όριο (Rate Limit) του DeepAI
-            if (response.status === 429) {
-                 return res.status(429).json({ error: "Quota limit exceeded for the external Image API (DeepAI)." });
-            }
-            return res.status(response.status).json({ error: "External Image API failed: " + response.statusText });
-        }
+        // Το Hugging Face επιστρέφει τη δυαδική εικόνα ως response (όχι JSON)
+        if (response.ok) {
+            
+            // Διαβάζουμε το binary buffer της εικόνας
+            const imageBuffer = await response.arrayBuffer();
+            
+            // Μετατρέπουμε το buffer σε Base64
+            const base64Image = Buffer.from(imageBuffer).toString('base64');
 
-        const data = await response.json(); 
-        
-        // Το DeepAI επιστρέφει το URL της εικόνας
-        if (data.output_url) {
+             // Επιστρέφουμε τα Base64 δεδομένα και τον MIME τύπο
             res.json({ 
-                imageUrl: data.output_url, 
-                text: "Η εικόνα δημιουργήθηκε επιτυχώς με Stable Diffusion (DeepAI)." 
+                image: base64Image, 
+                mimeType: "image/jpeg", // Υποθέτουμε JPEG για τα Stable Diffusion μοντέλα
+                text: "Η εικόνα δημιουργήθηκε επιτυχώς μέσω Hugging Face Inference API." 
             }); 
+            
         } else {
-            res.status(500).json({ error: "Image generation successful, but URL not found in response. " });
+            // Το Hugging Face μπορεί να επιστρέψει 400, 500, ή 503 (αναμονή/όριο)
+            const errorText = await response.text();
+            console.error("Hugging Face API Error:", response.status, errorText);
+            return res.status(response.status).json({ 
+                error: `External Image API failed (${response.status}): ${errorText.substring(0, 100)}` 
+            });
         }
         
     } catch (error) {

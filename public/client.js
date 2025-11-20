@@ -126,7 +126,6 @@ imageButton.addEventListener('click', async () => {
     let inputLi = document.createElement('li'); 
     inputLi.setAttribute('class', 'input-prompt'); 
     inputLi.setAttribute('id', 'question'); 
-    // Χρήση HTML tags
     inputLi.innerHTML = `🖼️ <strong>Δημιουργία Εικόνας:</strong> ${prompt}`; 
     promptsContainer.appendChild(inputLi); 
 
@@ -151,8 +150,8 @@ imageButton.addEventListener('click', async () => {
             const status = response.status;
             let errorMessage = 'Σφάλμα επικοινωνίας με τον server κατά τη δημιουργία εικόνας.';
 
-            if (status === 429) {
-                errorMessage = '🛑 Υπέρβαση Ορίου API (429). Παρακαλώ περιμένετε 1-2 λεπτά και δοκιμάστε ξανά.';
+            if (status === 429 || status === 503) { 
+                errorMessage = '🛑 Υπέρβαση Ορίου / Υπηρεσία απασχολημένη. Παρακαλώ περιμένετε 1 λεπτό και δοκιμάστε ξανά.';
             } else if (status === 500) {
                  errorMessage = '⚠️ Ο server αντιμετώπισε ένα εσωτερικό σφάλμα.';
             } else if (status >= 400) {
@@ -175,25 +174,26 @@ imageButton.addEventListener('click', async () => {
         outputLi.setAttribute('class', 'output-prompt'); 
         outputLi.setAttribute('id', 'output'); 
 
-        // Χρησιμοποιούμε το imageUrl που επιστρέφει το DeepAI
-        const imageUrl = data.imageUrl; 
-
-        if (imageUrl) {
+        // ➡️ Επιστροφή σε Base64 logic (όπως πριν το DeepAI)
+        const base64Data = data.image; 
+        const mimeType = data.mimeType || "image/jpeg"; // Χρησιμοποιούμε τον MIME type από τον server
+        
+        if (base64Data) {
+            const imageUrl = `data:${mimeType};base64,${base64Data}`;
+            
             let imageElement = document.createElement('img');
             imageElement.src = imageUrl; 
             imageElement.alt = prompt;
-            // Προσθήκη inline στυλ για βασική εμφάνιση
             imageElement.style.maxWidth = '100%'; 
             imageElement.style.height = 'auto'; 
             imageElement.style.borderRadius = '8px';
             imageElement.style.marginTop = '10px';
     
-            // Χρήση HTML tags
-            outputLi.innerHTML = `✅ <strong>Ορίστε η εικόνα σας:</strong> <br>
+            outputLi.innerHTML = `✅ <strong>Ορίστε η εικόνα σας (μέσω Hugging Face):</strong> <br>
                                   <em>${data.text || ' (Δεν υπήρχε συνοδευτικό κείμενο) '}</em>`;
             outputLi.appendChild(imageElement);
         } else {
-            outputLi.innerHTML = `❌ <strong>Σφάλμα:</strong> Δεν ελήφθη URL εικόνας από τον server.`;
+            outputLi.innerHTML = `❌ <strong>Σφάλμα:</strong> Δεν ελήφθη Base64 εικόνας από τον server.`;
         }
 
         promptsContainer.appendChild(outputLi); 
@@ -212,4 +212,3 @@ imageButton.addEventListener('click', async () => {
   
 // Καλεί τη συνάρτηση εκκίνησης 
 initialize();
-
