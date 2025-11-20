@@ -3,6 +3,8 @@
 import 'dotenv/config'; 
 import express from 'express'; 
 import { GoogleGenAI } from "@google/genai";
+// Υποθέτουμε ότι το περιβάλλον Node.js υποστηρίζει το παγκόσμιο fetch.
+// Αν όχι, θα χρειαστείτε: import fetch from 'node-fetch'; 
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,13 +18,13 @@ const ai = new GoogleGenAI({
 app.use(express.static('public')); 
 app.use(express.json());          
 
-// 2. Το API Endpoint για Συνομιλία (Chat)
+// 2. Το API Endpoint για Συνομιλία (Chat - Χρήση Gemini)
 app.post('/api/chat', async (req, res) => {
     
     const prompt = req.body.prompt; 
 
     const chat = ai.chats.create({
-        model: "gemini-2.5-flash", // Χρησιμοποιούμε το μοντέλο κειμένου
+        model: "gemini-2.5-flash", 
         history: req.body.history || [], 
         config: {
             systemInstruction: "Your name is Ozor, you are the personal assistant for the Ozon Browser. An app uploaded also on Play Store. You are interacting through an html website, so you should write your answers as an innerHTML",
@@ -42,7 +44,7 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
-// 3. Το API Endpoint για Δημιουργία Εικόνων (ΝΕΟ)
+// 3. Το API Endpoint για Δημιουργία Εικόνων (ΝΕΟ - ΧΡΗΣΗ DeepAI ως δωρεάν εναλλακτική)
 app.post('/api/generate-image', async (req, res) => {
     const { prompt } = req.body;
 
@@ -51,36 +53,43 @@ app.post('/api/generate-image', async (req, res) => {
     }
 
     try {
-        // Καλούμε το εξειδικευμένο μοντέλο για εικόνες
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash-image", // Μοντέλο για Image Generation
-            contents: prompt,
-            config: {
-                responseModalities: ["TEXT", "IMAGE"], 
+        // Κλήση στο DeepAI Text2Img API
+        const response = await fetch("https://api.deepai.org/api/text2img", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                // Μπορείτε να προσθέσετε το κλειδί σας εδώ αν το DeepAI σας ζητήσει για καλύτερα μοντέλα:
+                // 'Api-Key': process.env.DEEPAI_API_KEY, 
             },
+            body: JSON.stringify({
+                text: prompt,
+            }),
         });
-        
-        // Βρίσκουμε το κομμάτι που περιέχει τα δεδομένα της εικόνας (Base64)
-        const imagePart = response.candidates[0]?.content.parts.find(p => p.inlineData && p.inlineData.mimeType.startsWith('image/'));
 
-        if (imagePart) {
-             // Επιστρέφουμε τα Base64 δεδομένα της εικόνας και τον MIME τύπο
+        if (!response.ok) {
+            console.error("DeepAI API Error:", response.status, response.statusText);
+            // Επιστροφή σφάλματος 429 αν υπερβεί το όριο (Rate Limit) του DeepAI
+            if (response.status === 429) {
+                 return res.status(429).json({ error: "Quota limit exceeded for the external Image API (DeepAI)." });
+            }
+            return res.status(response.status).json({ error: "External Image API failed: " + response.statusText });
+        }
+
+        const data = await response.json(); 
+        
+        // Το DeepAI επιστρέφει το URL της εικόνας
+        if (data.output_url) {
             res.json({ 
-                image: imagePart.inlineData.data, 
-                mimeType: imagePart.inlineData.mimeType,
-                text: response.text // Συνοδευτικό κείμενο (αν υπάρχει)
+                imageUrl: data.output_url, 
+                text: "Η εικόνα δημιουργήθηκε επιτυχώς με Stable Diffusion (DeepAI)." 
             }); 
         } else {
-            res.status(500).json({ error: "Image generation successful, but image data not found in response." });
+            res.status(500).json({ error: "Image generation successful, but URL not found in response. " });
         }
         
     } catch (error) {
-        console.error("Gemini Image Error:", error);
-        // Ελέγχουμε για σφάλματα ορίων χρήσης
-        if (error.message && error.message.includes('429')) {
-             return res.status(429).json({ error: "Quota limit exceeded for Gemini API." });
-        }
-        res.status(500).json({ error: "Server error during Gemini Image call." });
+        console.error("Image Generation Error:", error);
+        res.status(500).json({ error: "Server error during image generation call." });
     }
 });
 
