@@ -132,7 +132,7 @@ imageButton.addEventListener('click', async () => {
     promptsContainer.appendChild(inputLi); 
 
     // --- 2. UI State Changes --- 
-    searchInput.value = thoughts[Math.floor(Math.random() * thoughts.length)]; 
+    searchInput.value = "Creating image..."; 
     searchInput.disabled = true; 
     askButton.disabled = true; 
     imageButton.disabled = true; 
@@ -153,7 +153,8 @@ imageButton.addEventListener('click', async () => {
             let errorMessage = 'Σφάλμα επικοινωνίας με τον server κατά τη δημιουργία εικόνας.';
 
             if (status === 503) { 
-                errorMessage = '🛑 Υπηρεσία απασχολημένη (Spin Up). Παρακαλώ περιμένετε 1 λεπτό και δοκιμάστε ξανά.';
+                // Αυτό δεν θα συμβεί με το Gemini, αλλά το κρατάμε για άλλα API
+                errorMessage = '🛑 Υπηρεσία απασχολημένη (Service Unavailable). Παρακαλώ δοκιμάστε ξανά.';
             } else if (status === 429) {
                  errorMessage = '🛑 Υπέρβαση Ορίου API (429). Παρακαλώ περιμένετε 1-2 λεπτά και δοκιμάστε ξανά.';
             } else if (status === 500) {
@@ -180,7 +181,7 @@ imageButton.addEventListener('click', async () => {
         outputLi.setAttribute('class', 'output-prompt'); 
         outputLi.setAttribute('id', 'output'); 
 
-        // ➡️ ΧΕΙΡΙΣΜΟΣ BASE64 ΔΕΔΟΜΕΝΩΝ ΑΠΟ ΤΟ HUGGING FACE
+        // ΧΕΙΡΙΣΜΟΣ BASE64 ΔΕΔΟΜΕΝΩΝ ΑΠΟ ΤΟ GEMINI IMAGEN
         const base64Data = data.image; 
         const mimeType = data.mimeType || "image/jpeg"; 
         
@@ -195,11 +196,10 @@ imageButton.addEventListener('click', async () => {
             imageElement.style.borderRadius = '8px';
             imageElement.style.marginTop = '10px';
     
-            outputLi.innerHTML = `✅ <strong>Ορίστε η εικόνα σας (μέσω Hugging Face):</strong> <br>
+            outputLi.innerHTML = `✅ <strong>Ορίστε η εικόνα σας (μέσω Gemini Imagen):</strong> <br>
                                   <em>${data.text || ' (Δεν υπήρχε συνοδευτικό κείμενο) '}</em>`;
             outputLi.appendChild(imageElement);
         } else {
-            // Αυτό θα εμφανιστεί αν ο server επέστρεψε JSON αλλά χωρίς εικόνα
             outputLi.innerHTML = `❌ <strong>Σφάλμα:</strong> Δεν ελήφθη Base64 εικόνας από τον server.`;
         }
 
