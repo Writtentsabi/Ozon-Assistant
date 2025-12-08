@@ -54,7 +54,7 @@ app.post('/api/generate-image', async (req, res) => {
     try {
         const response = await ai.models.generateImages({
             // Διορθωμένο μοντέλο για να λειτουργεί με την τρέχουσα έκδοση της βιβλιοθήκης
-            model: 'imagen-3.0-generate-002', 
+            model: 'gemini-2.5-flash-image', 
             prompt: prompt,
             config: {
                 numberOfImages: 1,
