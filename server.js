@@ -1,4 +1,4 @@
-// server.js (Τροποποιημένο για Multimodal Chat)
+// server.js (Διορθωμένο)
 
 import 'dotenv/config'; 
 import express from 'express'; 
@@ -15,7 +15,11 @@ const ai = new GoogleGenAI({
 
 // 1. Ρύθμιση για Static Files (HTML, CSS, Client JS)
 app.use(express.static('public')); 
-app.use(express.json());          
+
+// ΔΙΟΡΘΩΣΗ: Αύξηση του ορίου μεγέθους του JSON body για να δεχτεί μεγάλες εικόνες (Base64)
+app.use(express.json({ 
+    limit: '50mb' 
+}));          
 
 // 2. Το API Endpoint για Συνομιλία (Text-Only Chat)
 app.post('/api/chat', async (req, res) => {
