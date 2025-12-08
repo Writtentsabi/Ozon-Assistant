@@ -1,9 +1,9 @@
-// server.js
+// server.js (Τροποποιημένο για Multimodal Chat)
 
 import 'dotenv/config'; 
 import express from 'express'; 
 import { GoogleGenAI } from "@google/genai";
-import { Buffer } from 'buffer'; // Απαραίτητο για τη διαχείριση δυαδικών δεδομένων
+import { Buffer } from 'buffer';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,7 +17,7 @@ const ai = new GoogleGenAI({
 app.use(express.static('public')); 
 app.use(express.json());          
 
-// 2. Το API Endpoint για Συνομιλία (Chat - Χρήση Gemini)
+// 2. Το API Endpoint για Συνομιλία (Text-Only Chat)
 app.post('/api/chat', async (req, res) => {
     
     const prompt = req.body.prompt; 
@@ -43,46 +43,47 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
-// 3. ΤΟ API ENDPOINT ΓΙΑ ΔΗΜΙΟΥΡΓΙΑ ΕΙΚΟΝΩΝ (Gemini Imagen)
-app.post('/api/generate-image', async (req, res) => {
-    const { prompt } = req.body;
+// 3. ΤΟ ΝΕΟ API ENDPOINT ΓΙΑ ΕΙΚΟΝΕΣ + CHAT (Multimodal Chat)
+app.post('/api/multimodal-chat', async (req, res) => {
+    const { prompt, image, mimeType, history } = req.body;
 
-    if (!prompt) {
-        return res.status(400).json({ error: "Missing prompt for image generation." });
+    if (!image || !prompt) {
+        return res.status(400).json({ error: "Missing image data or prompt for multimodal chat." });
     }
     
+    // Το Gemini Vision μοντέλο είναι το gemini-2.5-flash (ή το pro)
+    const chat = ai.chats.create({
+        model: "gemini-2.5-flash", // Υποστηρίζει Vision
+        history: history || [], 
+        config: {
+            systemInstruction: "Your name is Ozor, you are the personal assistant for the OxyZen Browser. Analyze the provided image and respond to the user's prompt about it. Answer in Greek. Write your answers as an innerHTML.",
+        },
+    });
+    
+    // Δημιουργία του αντικειμένου μέρους (Part Object) για το Gemini
+    const imagePart = {
+        inlineData: {
+            data: image,
+            mimeType: mimeType 
+        }
+    };
+    
     try {
-        const response = await ai.models.generateImages({
-            // Διορθωμένο μοντέλο για να λειτουργεί με την τρέχουσα έκδοση της βιβλιοθήκης
-            model: 'gemini-2.5-flash-image', 
-            prompt: prompt,
-            config: {
-                numberOfImages: 1,
-                outputMimeType: 'image/jpeg',
-                aspectRatio: '1:1',
-            }
+        // Στέλνουμε το prompt και την εικόνα ως ξεχωριστά μέρη
+        const messageParts = [imagePart, prompt];
+        
+        const response = await chat.sendMessage({
+            message: messageParts,
         });
 
-        const image = response.generatedImages[0].image.imageBytes;
-
-        if (image) {
-             return res.json({ 
-                image: image, // Είναι ήδη Base64 string
-                mimeType: "image/jpeg", 
-                text: "Η εικόνα δημιουργήθηκε επιτυχώς μέσω του Gemini (Imagen)." 
-            });
-        } else {
-            return res.status(500).json({ error: "Gemini API failed to generate image bytes." });
-        }
+        res.json({ text: response.text }); 
 
     } catch (error) {
-        console.error("Gemini Imagen Error:", error);
-        res.status(500).json({ error: "Server error during Gemini Imagen call. Check GEMINI_API_KEY or usage limits." });
+        console.error("Gemini Multimodal Error:", error);
+        res.status(500).json({ error: "Server error during Gemini Multimodal chat call." });
     }
 });
 
-
-// 4. Εκκίνηση Server
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
