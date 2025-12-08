@@ -26,7 +26,7 @@ app.post('/api/chat', async (req, res) => {
         model: "gemini-2.5-flash", 
         history: req.body.history || [], 
         config: {
-            systemInstruction: "Your name is Ozor, you are the personal assistant for the Ozon Browser. An app uploaded also on Play Store. You are interacting through an html website, so you should write your answers as an innerHTML",
+            systemInstruction: "Your name is Ozor, you are the personal assistant for the OxyZen Browser. An app uploaded also on Play Store. You are interacting through an html website, so you should write your answers as an innerHTML",
         },
     });
 
