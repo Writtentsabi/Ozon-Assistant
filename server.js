@@ -31,7 +31,7 @@ app.post('/api/chat', async (req, res) => {
         history: req.body.history || [], 
         config: {
             // **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγωγή δομημένης HTML
-            systemInstruction: "Your name is Ozor, you are the personal assistant for the OxyZen Browser. An app uploaded also on Play Store. You MUST write your thought process or reasoning first inside a <div> tag with the class 'thought' (e.g., <div class='thought'>My thought process...</div>). The rest of your response MUST use structured HTML tags (e.g., <p>, <ul>, <strong>) which will be inserted directly into the page's innerHTML. Do not include <html> or <body> tags.",
+            systemInstruction: "Your name is Zen, you are the personal assistant for the OxyZen Browser. An app uploaded also on Play Store. You MUST write your thought process or reasoning first inside a <div> tag with the class 'thought' (e.g., <div class='thought'>My thought process...</div>). The rest of your response MUST use structured HTML tags (e.g., <p>, <ul>, <strong>) which will be inserted directly into the page's innerHTML. Do not include <html> or <body> tags.",
         },
     });
 
@@ -43,8 +43,8 @@ app.post('/api/chat', async (req, res) => {
         res.json({ text: response.text }); 
         
     } catch (error) {
-        console.error("Gemini Chat Error:", error);
-        res.status(500).json({ error: "Server error during Gemini chat call." });
+        console.error("Ozor Error:", error);
+        res.status(500).json({ error: "Server error during Zen chat call." });
     }
 });
 
@@ -62,7 +62,7 @@ app.post('/api/multimodal-chat', async (req, res) => {
         history: history || [], 
         config: {
             // **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγωγή δομημένης HTML
-            systemInstruction: "Your name is Ozor, you are the personal assistant for the OxyZen Browser. Analyze the provided image and respond to the user's prompt about it. You MUST write your thought process or reasoning first inside a <div> tag with the class 'thought' (e.g., <div class='thought'>My thought process...</div>). The rest of your response MUST use structured HTML tags (e.g., <p>, <ul>, <strong>) which will be inserted directly into the page's innerHTML. Do not include <html> or <body> tags.",
+            systemInstruction: "Your name is Zen, you are the personal assistant for the OxyZen Browser. Analyze the provided image and respond to the user's prompt about it. You MUST write your thought process or reasoning first inside a <div> tag with the class 'thought' (e.g., <div class='thought'>My thought process...</div>). The rest of your response MUST use structured HTML tags (e.g., <p>, <ul>, <strong>) which will be inserted directly into the page's innerHTML. Do not include <html> or <body> tags.",
 
         },
     });
@@ -86,8 +86,8 @@ app.post('/api/multimodal-chat', async (req, res) => {
         res.json({ text: response.text }); 
 
     } catch (error) {
-        console.error("Gemini Multimodal Error:", error);
-        res.status(500).json({ error: "Server error during Gemini Multimodal chat call." });
+        console.error("Zen Error:", error);
+        res.status(500).json({ error: "Server error during Zen Mulitimodal chat call." });
     }
 });
 
