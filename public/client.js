@@ -1,5 +1,5 @@
 // public/client.js 
-  
+ 
 // Κρατάμε το ιστορικό στον client, καθώς ο server είναι stateless (δεν θυμάται) 
 const historyArray = [];  
   
@@ -8,6 +8,8 @@ const askButton = document.getElementById('ask');
 const searchInput = document.getElementById('search'); 
 const promptsContainer = document.querySelector('.prompt-list'); 
 const imageButton = document.getElementById('image'); 
+// ΝΕΟ: Input File Element
+const imageUploadInput = document.getElementById('image-upload');
   
 const thoughts = ['Thinking...', 'Hmmm...', 'Let me decide...', 'LoAdInG BiP BoP']; 
   
@@ -26,6 +28,98 @@ function initialize() {
     } 
 } 
   
+// *** ΝΕΑ ΛΟΓΙΚΗ ΓΙΑ ΤΟ IMAGE BUTTON ***
+// Όταν πατηθεί το κουμπί εικόνας, κάνε κλικ στο κρυφό input file
+imageButton.addEventListener('click', () => { 
+    imageUploadInput.click();
+}); 
+
+
+// *** ΝΕΑ ΛΟΓΙΚΗ: Όταν επιλεγεί αρχείο ***
+imageUploadInput.addEventListener('change', async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // Εμφάνιση ερωτήματος (με το όνομα του αρχείου)
+    const promptText = searchInput.value || "Ανάλυσε αυτήν την εικόνα.";
+    let inputLi = document.createElement('li'); 
+    inputLi.setAttribute('class', 'input-prompt'); 
+    inputLi.innerHTML = `🖼️ (Αρχείο: ${file.name}): ${promptText}`; 
+    promptsContainer.appendChild(inputLi);
+
+    // --- 1. Διαβάζουμε το αρχείο ως Base64 ---
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+
+    reader.onloadend = async () => {
+        const base64Data = reader.result.split(',')[1]; // Αφαίρεση του "data:..." prefix
+
+        // --- 2. Εμφάνιση μηνύματος φόρτωσης ---
+        let outputLi = document.createElement('li'); 
+        outputLi.setAttribute('class', 'output-prompt'); 
+        outputLi.setAttribute('id', 'output'); 
+        outputLi.innerHTML = `<i class=\"fa fa-spinner fa-spin\"></i> ${thoughts[Math.floor(Math.random() * thoughts.length)]}`;
+        promptsContainer.appendChild(outputLi); 
+
+        // --- 3. Αλλαγή UI State ---
+        searchInput.disabled = true;
+        askButton.disabled = true;
+        imageButton.disabled = true;
+        
+        // --- 4. Fetch to new Multimodal API ---
+        try {
+            const response = await fetch('/api/multimodal-chat', { // ΝΕΟ ENDPOINT
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    prompt: promptText,
+                    image: base64Data,
+                    mimeType: file.type,
+                    history: historyArray 
+                })
+            });
+
+            const data = await response.json();
+            
+            // --- 5. ΧΕΙΡΙΣΜΟΣ ΑΠΟΤΕΛΕΣΜΑΤΩΝ ---
+            if (data.error) {
+                outputLi.innerHTML = `❌ <strong>Σφάλμα Server:</strong> ${data.error}`;
+            } else {
+                // Εμφάνιση της εικόνας που στάλθηκε για επιβεβαίωση
+                let imagePreview = document.createElement('img');
+                imagePreview.src = reader.result; // Χρησιμοποιούμε το πλήρες DataURL
+                imagePreview.style.maxWidth = '100px'; 
+                imagePreview.style.borderRadius = '5px';
+                imagePreview.style.marginBottom = '10px';
+                
+                
+                // Προσθήκη απάντησης στο ιστορικό
+                historyArray.push({ role: "user", parts: [{ text: promptText, inlineData: { mimeType: file.type, data: base64Data } }] });
+                historyArray.push({ role: "model", parts: [{ text: data.text }] });
+
+                // Ενημέρωση της απάντησης στην οθόνη
+                outputLi.innerHTML = data.text;
+                outputLi.prepend(imagePreview); // Τοποθετούμε την εικόνα πριν το κείμενο
+            }
+
+        } catch (error) {
+            console.error('Fetch/Multimodal Error:', error);
+            outputLi.innerHTML = `❌ <strong>Σφάλμα Δικτύου:</strong> ${error.message}`;
+        } finally {
+            // --- 6. Επαναφορά UI State ---
+            searchInput.value = "";
+            searchInput.disabled = false;
+            askButton.disabled = false;
+            imageButton.disabled = false;
+            outputLi.removeAttribute('id'); 
+            promptsContainer.scrollTo(0, promptsContainer.scrollHeight);
+            imageUploadInput.value = null; // Καθαρισμός του input file
+            initialize();
+        }
+    };
+});
+  
+// *** ΛΟΓΙΚΗ CHAT (ΠΑΡΑΜΕΝΕΙ) ***
 // 3. Λογική Κλικ για Chat
 askButton.addEventListener('click', async () => { 
   
@@ -35,184 +129,67 @@ askButton.addEventListener('click', async () => {
     // --- 1. Εμφάνιση ερωτήματος χρήστη (DOM Logic) --- 
     let inputLi = document.createElement('li'); 
     inputLi.setAttribute('class', 'input-prompt'); 
-    inputLi.setAttribute('id', 'question'); 
     inputLi.innerHTML = prompt; 
     promptsContainer.appendChild(inputLi); 
-  
-    // --- 2. Προσθήκη ερωτήματος στο Ιστορικό --- 
-    historyArray.push({ 
-        role: "user", parts: [{ text: prompt }] 
-    }); 
-  
-    // --- 3. UI State Changes --- 
-    searchInput.value = thoughts[Math.floor(Math.random() * thoughts.length)]; 
-    searchInput.disabled = true; 
-    askButton.disabled = true; 
-    imageButton.disabled = true; 
-  
-    try { 
-        // --- 4. FETCH CALL (Chat) --- 
-        const response = await fetch('/api/chat', { 
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify({  
-                prompt: prompt, 
-                history: historyArray  
-            }) 
-        }); 
-  
-        // ------------------ ΕΛΕΓΧΟΣ ΣΦΑΛΜΑΤΩΝ ------------------
-        if (!response.ok) {
-            const status = response.status;
-            let errorMessage = 'Σφάλμα επικοινωνίας με τον server. Δοκιμάστε αργότερα.';
-
-            if (status === 429) {
-                errorMessage = '🛑 Υπέρβαση Ορίου Gemini API (429). Παρακαλώ περιμένετε 1-2 λεπτά και δοκιμάστε ξανά.';
-            } else if (status === 500) {
-                 errorMessage = '⚠️ Ο server αντιμετώπισε ένα εσωτερικό σφάλμα.';
-            } else if (status === 404) {
-                 errorMessage = '🚫 Σφάλμα 404: Δεν βρέθηκε το endpoint συνομιλίας στον server.';
-            } else if (status >= 400) {
-                 errorMessage = `Σφάλμα ${status}. Το αίτημα απέτυχε.`;
-            }
-
-            let errorLi = document.createElement('li'); 
-            errorLi.setAttribute('class', 'output-prompt error-message');
-            errorLi.innerHTML = errorMessage;
-            promptsContainer.appendChild(errorLi);
-            
-            throw new Error(`HTTP error! status: ${status}`);
-        }
-        // ------------------ ΤΕΛΟΣ ΕΛΕΓΧΟΥ ------------------
-  
-        const data = await response.json(); 
-        const answer = (data.text || "Δεν ελήφθη απάντηση.")
-                       .replaceAll("```html", "").replaceAll("```", ""); 
-  
-        // --- 5. Εμφάνιση απάντησης (DOM Logic) --- 
-        let outputLi = document.createElement('li'); 
-        outputLi.setAttribute('class', 'output-prompt'); 
-        outputLi.setAttribute('id', 'output'); 
-        outputLi.innerHTML = answer; 
-        promptsContainer.appendChild(outputLi); 
-  
-        // --- 6. Ενημέρωση Ιστορικού --- 
-        historyArray.push({ 
-            role: "model", parts: [{ text: data.text }] 
-        }); 
-  
-        // --- 7. Εκτέλεση Scripts (Αν χρειάζεται) --- 
-        const scripts = outputLi.getElementsByTagName('script'); 
-        for (let i = 0; i < scripts.length; i++) { 
-            eval(scripts[i].textContent); 
-        } 
-  
-    } catch (error) { 
-        console.error('Fetch/Gemini Error:', error); 
-    } finally { 
-        // --- 8. Επαναφορά UI State --- 
-        searchInput.value = ""; 
-        searchInput.disabled = false; 
-        askButton.disabled = false; 
-        imageButton.disabled = false; 
-    } 
-}); 
-  
-// 4. Λογική Κλικ για Image
-imageButton.addEventListener('click', async () => { 
     
-    const prompt = searchInput.value; 
-    if (!prompt) return; 
-
-    // --- 1. Εμφάνιση ερωτήματος χρήστη (DOM Logic) --- 
-    let inputLi = document.createElement('li'); 
-    inputLi.setAttribute('class', 'input-prompt'); 
-    inputLi.setAttribute('id', 'question'); 
-    inputLi.innerHTML = `🖼️ <strong>Δημιουργία Εικόνας:</strong> ${prompt}`; 
-    promptsContainer.appendChild(inputLi); 
-
-    // --- 2. UI State Changes --- 
-    searchInput.value = "Creating image..."; 
-    searchInput.disabled = true; 
-    askButton.disabled = true; 
-    imageButton.disabled = true; 
-
-    try { 
-        // --- 3. FETCH CALL στο endpoint Image Generation --- 
-        const response = await fetch('/api/generate-image', { 
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify({  
-                prompt: prompt
-            }) 
-        }); 
-
-        // ------------------ ΕΛΕΓΧΟΣ ΣΦΑΛΜΑΤΩΝ ------------------
-        if (!response.ok) {
-            const status = response.status;
-            let errorMessage = 'Σφάλμα επικοινωνίας με τον server κατά τη δημιουργία εικόνας.';
-
-            if (status === 429) {
-                 errorMessage = '🛑 Υπέρβαση Ορίου API (429). Παρακαλώ περιμένετε 1-2 λεπτά και δοκιμάστε ξανά.';
-            } else if (status === 500) {
-                 errorMessage = '⚠️ Ο server αντιμετώπισε ένα εσωτερικό σφάλμα.';
-            } else if (status === 404) {
-                 errorMessage = '🚫 Σφάλμα 404: Δεν βρέθηκε το endpoint εικόνας στον server (ή το μοντέλο στην Google).';
-            } else if (status >= 400) {
-                 errorMessage = `Σφάλμα ${status}. Το αίτημα απέτυχε.`;
-            }
-
-            let errorLi = document.createElement('li'); 
-            errorLi.setAttribute('class', 'output-prompt error-message');
-            errorLi.innerHTML = errorMessage;
-            promptsContainer.appendChild(errorLi);
-            
-            throw new Error(`HTTP error! status: ${status}`);
-        }
-        // ------------------ ΤΕΛΟΣ ΕΛΕΓΧΟΥ ------------------
-
-        const data = await response.json(); 
-        
-        // --- 4. Εμφάνιση εικόνας (DOM Logic) --- 
-        let outputLi = document.createElement('li'); 
-        outputLi.setAttribute('class', 'output-prompt'); 
-        outputLi.setAttribute('id', 'output'); 
-
-        // ΧΕΙΡΙΣΜΟΣ BASE64 ΔΕΔΟΜΕΝΩΝ ΑΠΟ ΤΟ GEMINI IMAGEN
-        const base64Data = data.image; 
-        const mimeType = data.mimeType || "image/jpeg"; 
-        
-        if (base64Data) {
-            const imageUrl = `data:${mimeType};base64,${base64Data}`;
-            
-            let imageElement = document.createElement('img');
-            imageElement.src = imageUrl; 
-            imageElement.alt = prompt;
-            imageElement.style.maxWidth = '100%'; 
-            imageElement.style.height = 'auto'; 
-            imageElement.style.borderRadius = '8px';
-            imageElement.style.marginTop = '10px';
+    // --- 2. Εμφάνιση μηνύματος φόρτωσης (DOM Logic) --- 
+    let outputLi = document.createElement('li'); 
+    outputLi.setAttribute('class', 'output-prompt'); 
+    outputLi.setAttribute('id', 'output'); 
+    outputLi.innerHTML = `<i class=\"fa fa-spinner fa-spin\"></i> ${thoughts[Math.floor(Math.random() * thoughts.length)]}`;
+    promptsContainer.appendChild(outputLi); 
     
-            outputLi.innerHTML = `✅ <strong>Ορίστε η εικόνα σας (μέσω Gemini Imagen):</strong> <br>
-                                  <em>${data.text || ' (Δεν υπήρχε συνοδευτικό κείμενο) '}</em>`;
-            outputLi.appendChild(imageElement);
+    // --- 3. Αλλαγή UI State ---
+    searchInput.disabled = true;
+    askButton.disabled = true;
+    imageButton.disabled = true;
+
+    // --- 4. Fetch the Chat API ---
+    try {
+        const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                prompt: prompt,
+                history: historyArray 
+            })
+        });
+
+        const data = await response.json();
+
+        // 5. ΧΕΙΡΙΣΜΟΣ ΑΠΟΤΕΛΕΣΜΑΤΩΝ (DOM Logic)
+        if (data.error) {
+            outputLi.innerHTML = `❌ <strong>Σφάλμα Server:</strong> ${data.error}`;
         } else {
-            outputLi.innerHTML = `❌ <strong>Σφάλμα:</strong> Δεν ελήφθη Base64 εικόνας από τον server.`;
+            // Προσθήκη απάντησης στο ιστορικό
+            historyArray.push({ role: "user", parts: [{ text: prompt }] });
+            historyArray.push({ role: "model", parts: [{ text: data.text }] });
+
+            // Ενημέρωση της απάντησης στην οθόνη
+            outputLi.innerHTML = data.text;
         }
 
-        promptsContainer.appendChild(outputLi); 
-        
-    } catch (error) { 
-        console.error('Fetch/Image Error:', error); 
-    } finally { 
-        // --- 5. Επαναφορά UI State --- 
-        searchInput.value = ""; 
-        searchInput.disabled = false; 
-        askButton.disabled = false; 
-        imageButton.disabled = false; 
+    } catch (error) {
+        console.error('Fetch/Chat Error:', error);
+    } finally {
+        // --- 5. Επαναφορά UI State ---
+        searchInput.value = "";
+        searchInput.disabled = false;
+        askButton.disabled = false;
+        imageButton.disabled = false;
+        outputLi.removeAttribute('id'); // Αφαιρούμε το ID από την τελευταία απάντηση
+        promptsContainer.scrollTo(0, promptsContainer.scrollHeight); // Scroll to bottom
+        initialize(); // Επαναφορά placeholder
+    }
+});
+  
+// 5. Λογική Enter Key 
+searchInput.addEventListener('keydown', (event) => { 
+    if (event.key === 'Enter') { 
+        if (imageButton.disabled) return;
+        askButton.click();
     } 
 }); 
   
-  
-// Καλεί τη συνάρτηση εκκίνησης 
+// 6. Εκκίνηση 
 initialize();

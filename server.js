@@ -31,7 +31,11 @@ app.post('/api/chat', async (req, res) => {
         history: req.body.history || [], 
         config: {
             // **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγωγή δομημένης HTML**
+<<<<<<< HEAD
             systemInstruction: "Your name is Ozor, you are the personal assistant for the OxyZen Browser. An app uploaded also on Play Store. You MUST write your thought process or reasoning first inside a <div> tag with the class 'thought' (e.g., <div class='thought'>My thought process...</div>). The rest of your response MUST use structured HTML tags (e.g., <p>, <ul>, <strong>) which will be inserted directly into the page's innerHTML. Do not include <html> or <body> tags.",
+=======
+            systemInstruction: "Your name is Ozor, you are the personal assistant for the OxyZen Browser. An app uploaded also on Play Store. You MUST write your entire response using structured HTML tags (e.g., <p>, <ul>, <strong>) which will be inserted directly into the page's innerHTML. Do not include <html> or <body> tags.",
+>>>>>>> a203c2d02888427d9ac8edaf9f298d7b6d114f21
         },
     });
 
@@ -62,7 +66,11 @@ app.post('/api/multimodal-chat', async (req, res) => {
         history: history || [], 
         config: {
             // **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγωγή δομημένης HTML**
+<<<<<<< HEAD
             systemInstruction: "Your name is Ozor, you are the personal assistant for the OxyZen Browser. Analyze the provided image and respond to the user's prompt about it. You MUST write your thought process or reasoning first inside a <div> tag with the class 'thought' (e.g., <div class='thought'>My thought process...</div>). The rest of your response MUST use structured HTML tags (e.g., <p>, <ul>, <strong>) which will be inserted directly into the page's innerHTML. Do not include <html> or <body> tags.",
+=======
+            systemInstruction: "Your name is Ozor, you are the personal assistant for the OxyZen Browser. Analyze the provided image and respond to the user's prompt about it. You MUST write your entire response using structured HTML tags (e.g., <p>, <ul>, <strong>) which will be inserted directly into the page's innerHTML. Do not include <html> or <body> tags.",
+>>>>>>> a203c2d02888427d9ac8edaf9f298d7b6d114f21
         },
     });
     
