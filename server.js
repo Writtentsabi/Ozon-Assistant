@@ -27,7 +27,7 @@ app.post('/api/chat', async (req, res) => {
     const prompt = req.body.prompt; 
 
     const chat = ai.chats.create({
-        model: "gemini-2.5-flash", 
+        model: "gemini-3.0-flash", 
         history: req.body.history || [], 
         config: {
             // **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγωγή δομημένης HTML
