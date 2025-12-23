@@ -48,7 +48,34 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
-// 3. ΤΟ ΝΕΟ API ENDPOINT ΓΙΑ ΕΙΚΟΝΕΣ + CHAT (Multimodal Chat)
+//3. API ΓΙΑ CHAT ΜΕ ΚΑΙΝΟΥΡΙΟ ΜΟΝΤΕΛΟ
+app.post('/api/advanced-chat', async (req, res) => {
+
+    const prompt = req.body.prompt;
+
+    const chat = ai.chats.create({
+        model: "gemini-3.0-flash",
+        history: req.body.history || [],
+        config: {
+            // **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγω>
+            systemInstruction: "Your name is Zen, you a>
+        },
+    });
+
+    try {
+        const response = await chat.sendMessage({
+            message: prompt,
+        });
+
+        res.json({ text: response.text });
+
+    } catch (error) {
+        console.error("Ozor Error:", error);
+        res.status(500).json({ error: "Server error dur>
+    }
+});
+
+// 4. ΤΟ ΝΕΟ API ENDPOINT ΓΙΑ ΕΙΚΟΝΕΣ + CHAT (Multimodal Chat)
 app.post('/api/multimodal-chat', async (req, res) => {
     const { prompt, image, mimeType, history } = req.body;
 
@@ -88,6 +115,53 @@ app.post('/api/multimodal-chat', async (req, res) => {
     } catch (error) {
         console.error("Zen Error:", error);
         res.status(500).json({ error: "Server error during Zen Mulitimodal chat call." });
+    }
+});
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
+
+//5.API ΓΙΑ ΑΠΟΣΤΟΛΗ ΕΙΚΟΝΩΝ ΜΕ ΑΝΑΒΑΘΜΙΣΜΕΝΟ ΜΟΝΤΕΛΟ
+app.post('/api/advanced-multimodal-chat', async (req, res) => {
+    const { prompt, image, mimeType, history } = req.bo>
+
+    if (!image || !prompt) {
+        return res.status(400).json({ error: "Missing i>
+    }
+
+    // Το Gemini Vision μοντέλο είναι το gemini-2.5-fla>
+    const chat = ai.chats.create({
+        model: "gemini-3.0-flash", // Υποστηρίζει Vision
+        history: history || [],
+        config: {
+            // **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγω>
+            systemInstruction: "Your name is Zen, you a>
+
+        },
+    });
+
+    // Δημιουργία του αντικειμένου μέρους (Part Object)>
+    const imagePart = {
+        inlineData: {
+            data: image,
+            mimeType: mimeType
+        }
+    };
+
+    try {
+        // Στέλνουμε το prompt και την εικόνα ως ξεχωρι>
+        const messageParts = [imagePart, prompt];
+
+        const response = await chat.sendMessage({
+            message: messageParts,
+        });
+
+        res.json({ text: response.text });
+
+    } catch (error) {
+        console.error("Zen Error:", error);
+        res.status(500).json({ error: "Server error dur>
     }
 });
 
