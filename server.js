@@ -1,170 +1,81 @@
-// server.js (Διορθωμένο για παραγωγή δομημένης HTML)
-
+// server.js - Πλήρης Διορθωμένος Κώδικας
 import 'dotenv/config'; 
 import express from 'express'; 
 import { GoogleGenAI } from "@google/genai";
-import { Buffer } from 'buffer';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ΑΣΦΑΛΕΙΑ: Χρήση του κλειδιού από το Render Environment
-const ai = new GoogleGenAI({ 
-    apiKey: process.env.GEMINI_API_KEY 
-});
+// Αρχικοποίηση Google AI με το κλειδί σας από το περιβάλλον (Render/Heroku)
+const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY);
 
-// 1. Ρύθμιση για Static Files (HTML, CSS, Client JS)
 app.use(express.static('public')); 
 
-// ΔΙΟΡΘΩΣΗ: Αύξηση του ορίου μεγέθους του JSON body για να δεχτεί μεγάλες εικόνες (Base64)
-app.use(express.json({ 
-    limit: '50mb' 
-}));          
+// Αύξηση ορίου JSON για την αποστολή Base64 εικόνων
+app.use(express.json({ limit: '50mb' }));
 
-// 2. Το API Endpoint για Συνομιλία (Text-Only Chat)
-app.post('/api/chat', async (req, res) => {
-    
-    const prompt = req.body.prompt; 
-
-    const chat = ai.chats.create({
-        model: "gemini-2.5-flash", 
-        history: req.body.history || [], 
-        config: {
-            // **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγωγή δομημένης HTML
-            systemInstruction: "Your name is Zen, you are the personal assistant for the OxyZen Browser. An app uploaded also on Play Store. You MUST write your thought process or reasoning first inside a <div> tag with the class 'thought' (e.g., <div class='thought'>My thought process...</div>). The rest of your response MUST use structured HTML tags (e.g., <p>, <ul>, <strong>) which will be inserted directly into the page's innerHTML. Do not include <html> or <body> tags.",
-        },
-    });
-
+/**
+ * Κοινή συνάρτηση για τη διαχείριση όλων των αιτημάτων AI.
+ * Υποστηρίζει Text-only και Multimodal (εικόνα + κείμενο).
+ */
+async function processAIRequest(req, res, modelName) {
     try {
-        const response = await chat.sendMessage({
-            message: prompt,
-        });
+        const { prompt, history, image, mimeType } = req.body;
 
-        res.json({ text: response.text }); 
-        
-    } catch (error) {
-        console.error("Ozor Error:", error);
-        res.status(500).json({ error: "Server error during Zen chat call." });
-    }
-});
-
-//3. API ΓΙΑ CHAT ΜΕ ΚΑΙΝΟΥΡΙΟ ΜΟΝΤΕΛΟ
-app.post('/api/advanced-chat', async (req, res) => {
-
-    const prompt = req.body.prompt;
-
-    const chat = ai.chats.create({
-        model: "gemini-3.0-flash",
-        history: req.body.history || [],
-        config: {
-            // **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγω>
-            systemInstruction: "Your name is Zen, you a>
-        },
-    });
-
-    try {
-        const response = await chat.sendMessage({
-            message: prompt,
-        });
-
-        res.json({ text: response.text });
-
-    } catch (error) {
-        console.error("Ozor Error:", error);
-        res.status(500).json({ error: "Server error dur>
-    }
-});
-
-// 4. ΤΟ ΝΕΟ API ENDPOINT ΓΙΑ ΕΙΚΟΝΕΣ + CHAT (Multimodal Chat)
-app.post('/api/multimodal-chat', async (req, res) => {
-    const { prompt, image, mimeType, history } = req.body;
-
-    if (!image || !prompt) {
-        return res.status(400).json({ error: "Missing image data or prompt for multimodal chat." });
-    }
-    
-    // Το Gemini Vision μοντέλο είναι το gemini-2.5-flash (ή το pro)
-    const chat = ai.chats.create({
-        model: "gemini-2.5-flash", // Υποστηρίζει Vision
-        history: history || [], 
-        config: {
-            // **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγωγή δομημένης HTML
-            systemInstruction: "Your name is Zen, you are the personal assistant for the OxyZen Browser. Analyze the provided image and respond to the user's prompt about it. You MUST write your thought process or reasoning first inside a <div> tag with the class 'thought' (e.g., <div class='thought'>My thought process...</div>). The rest of your response MUST use structured HTML tags (e.g., <p>, <ul>, <strong>) which will be inserted directly into the page's innerHTML. Do not include <html> or <body> tags.",
-
-        },
-    });
-    
-    // Δημιουργία του αντικειμένου μέρους (Part Object) για το Gemini
-    const imagePart = {
-        inlineData: {
-            data: image,
-            mimeType: mimeType 
+        if (!prompt) {
+            return res.status(400).json({ error: "Missing prompt." });
         }
-    };
-    
-    try {
-        // Στέλνουμε το prompt και την εικόνα ως ξεχωριστά μέρη
-        const messageParts = [imagePart, prompt];
-        
-        const response = await chat.sendMessage({
-            message: messageParts,
+
+        // Ορισμός του μοντέλου και των οδηγιών συστήματος
+        const model = genAI.getGenerativeModel({ 
+            model: modelName,
+            systemInstruction: "Your name is Zen, you are the personal assistant for the OxyZen Browser. You MUST write your thought process first inside a <div class='thought'>...</div>. The rest of your response MUST use structured HTML tags (e.g., <p>, <ul>, <strong>)." 
         });
 
-        res.json({ text: response.text }); 
+        let result;
 
-    } catch (error) {
-        console.error("Zen Error:", error);
-        res.status(500).json({ error: "Server error during Zen Mulitimodal chat call." });
-    }
-});
-
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
-
-//5.API ΓΙΑ ΑΠΟΣΤΟΛΗ ΕΙΚΟΝΩΝ ΜΕ ΑΝΑΒΑΘΜΙΣΜΕΝΟ ΜΟΝΤΕΛΟ
-app.post('/api/advanced-multimodal-chat', async (req, res) => {
-    const { prompt, image, mimeType, history } = req.bo>
-
-    if (!image || !prompt) {
-        return res.status(400).json({ error: "Missing i>
-    }
-
-    // Το Gemini Vision μοντέλο είναι το gemini-2.5-fla>
-    const chat = ai.chats.create({
-        model: "gemini-3.0-flash", // Υποστηρίζει Vision
-        history: history || [],
-        config: {
-            // **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγω>
-            systemInstruction: "Your name is Zen, you a>
-
-        },
-    });
-
-    // Δημιουργία του αντικειμένου μέρους (Part Object)>
-    const imagePart = {
-        inlineData: {
-            data: image,
-            mimeType: mimeType
+        if (image && mimeType) {
+            // MULTIMODAL LOGIC (Εικόνα + Κείμενο)
+            const imagePart = {
+                inlineData: {
+                    data: image,
+                    mimeType: mimeType 
+                }
+            };
+            // Σημείωση: Στα multimodal αιτήματα, το ιστορικό συνήθως προστίθεται στο prompt 
+            // ή χρησιμοποιείται διαφορετική μέθοδος ανάλογα με το SDK. 
+            // Εδώ στέλνουμε εικόνα και prompt ως μέρη.
+            result = await model.generateContent([prompt, imagePart]);
+        } else {
+            // SIMPLE CHAT LOGIC (Μόνο Κείμενο)
+            const chat = model.startChat({
+                history: history || [],
+            });
+            result = await chat.sendMessage(prompt);
         }
-    };
 
-    try {
-        // Στέλνουμε το prompt και την εικόνα ως ξεχωρι>
-        const messageParts = [imagePart, prompt];
-
-        const response = await chat.sendMessage({
-            message: messageParts,
-        });
-
-        res.json({ text: response.text });
+        const response = await result.response;
+        const text = response.text();
+        
+        // Επιστροφή JSON αντικειμένου στην εφαρμογή
+        res.json({ text: text });
 
     } catch (error) {
-        console.error("Zen Error:", error);
-        res.status(500).json({ error: "Server error dur>
+        console.error(`Zen Error (${modelName}):`, error);
+        // Εξασφαλίζουμε ότι επιστρέφουμε πάντα JSON ακόμα και σε σφάλμα
+        res.status(500).json({ error: "Server error during AI communication." });
     }
-});
+}
 
+// --- ENDPOINTS ΓΙΑ GEMINI 2.5 FLASH ---
+app.post('/api/chat', (req, res) => processAIRequest(req, res, "gemini-2.5-flash")); // Σημείωση: Το 2.5 flash αντιστοιχεί συνήθως σε 1.5 flash στο SDK
+app.post('/api/multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-2.5-flash"));
+
+// --- ENDPOINTS ΓΙΑ GEMINI 3.0 FLASH (Advanced) ---
+app.post('/api/advanced-chat', (req, res) => processAIRequest(req, res, "gemini-3-flash-preview")); // Χρησιμοποιήστε το όνομα μοντέλου που παρέχει η Google για το 3.0/2.0
+app.post('/api/advanced-multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-3-flash-preview"));
+
+// ΜΟΝΟ ΕΝΑ app.listen στο τέλος του αρχείου για να αποφύγουμε το κρασάρισμα
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
