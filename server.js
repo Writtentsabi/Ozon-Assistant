@@ -1,11 +1,11 @@
 import 'dotenv/config'; 
 import express from 'express'; 
-import { GoogleGenAI } from "@google/genai"; // Εισαγωγή της κλάσης
+import { GoogleGenAI } from "@google/genai";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ΔΙΟΡΘΩΣΗ: Προσθήκη της λέξης 'new' πριν από το GoogleGenAI
+// Αρχικοποίηση - Χρήση 'new' γιατί είναι Class
 const ai = new GoogleGenAI({ 
     apiKey: process.env.GEMINI_API_KEY 
 });
@@ -19,22 +19,20 @@ async function processAIRequest(req, res, modelId) {
 
         if (!prompt) return res.status(400).json({ error: "Missing prompt." });
 
-        // Στο @google/genai δημιουργούμε το chat/session από το ai.models
-        const model = ai.models.get(modelId);
-
         const systemInstruction = "Your name is Zen, personal assistant for OxyZen Browser. Write thought process in <div class='thought'>...</div> and use HTML for response.";
 
         let result;
         if (image && mimeType) {
-            // Multimodal Logic
-            const imagePart = { inlineData: { data: image, mimeType: mimeType } };
-            result = await model.generateContent({
-                contents: [{ role: "user", parts: [imagePart, { text: prompt }] }],
+            // MULTIMODAL: Στο νέο SDK καλούμε το ai.generateContent
+            result = await ai.generateContent({
+                model: modelId,
+                contents: [{ role: "user", parts: [{ inlineData: { data: image, mimeType: mimeType } }, { text: prompt }] }],
                 systemInstruction: systemInstruction
             });
         } else {
-            // Text-only Logic με ιστορικό
-            result = await model.generateContent({
+            // TEXT ONLY: Με ιστορικό
+            result = await ai.generateContent({
+                model: modelId,
                 contents: [...(history || []), { role: "user", parts: [{ text: prompt }] }],
                 systemInstruction: systemInstruction
             });
@@ -44,12 +42,12 @@ async function processAIRequest(req, res, modelId) {
         res.json({ text: response.text() });
 
     } catch (error) {
-        console.error("AI Error:", error);
+        console.error("AI SDK Error:", error);
         res.status(500).json({ error: error.message });
     }
 }
 
-// Endpoints
+// Endpoints με τα σωστά IDs
 app.post('/api/chat', (req, res) => processAIRequest(req, res, "gemini-2.5-flash"));
 app.post('/api/multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-2.5-flash"));
 
