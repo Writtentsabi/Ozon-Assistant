@@ -1,6 +1,6 @@
 import 'dotenv/config'; 
 import express from 'express'; 
-import { createGoogleGenerativeAI } from "@google/genai"; // Νέος τρόπος εισαγωγής
+import { GoogleGenAI } from "@google/genai"; // Νέος τρόπος εισαγωγής
 
 const app = express();
 const PORT = process.env.PORT || 3000;
