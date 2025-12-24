@@ -1,12 +1,12 @@
 import 'dotenv/config'; 
 import express from 'express'; 
-import { GoogleGenAI } from "@google/genai"; // Νέος τρόπος εισαγωγής
+import { GoogleGenAI } from "@google/genai"; // Εισαγωγή της κλάσης
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Αρχικοποίηση με το νέο SDK
-const ai = GoogleGenAI({ 
+// ΔΙΟΡΘΩΣΗ: Προσθήκη της λέξης 'new' πριν από το GoogleGenAI
+const ai = new GoogleGenAI({ 
     apiKey: process.env.GEMINI_API_KEY 
 });
 
@@ -19,21 +19,21 @@ async function processAIRequest(req, res, modelId) {
 
         if (!prompt) return res.status(400).json({ error: "Missing prompt." });
 
-        // Στο νέο SDK χρησιμοποιούμε το ai.models.get
+        // Στο @google/genai δημιουργούμε το chat/session από το ai.models
         const model = ai.models.get(modelId);
 
         const systemInstruction = "Your name is Zen, personal assistant for OxyZen Browser. Write thought process in <div class='thought'>...</div> and use HTML for response.";
 
         let result;
         if (image && mimeType) {
-            // Multimodal κλήση
+            // Multimodal Logic
             const imagePart = { inlineData: { data: image, mimeType: mimeType } };
             result = await model.generateContent({
                 contents: [{ role: "user", parts: [imagePart, { text: prompt }] }],
                 systemInstruction: systemInstruction
             });
         } else {
-            // Text-only κλήση με ιστορικό
+            // Text-only Logic με ιστορικό
             result = await model.generateContent({
                 contents: [...(history || []), { role: "user", parts: [{ text: prompt }] }],
                 systemInstruction: systemInstruction
@@ -44,17 +44,15 @@ async function processAIRequest(req, res, modelId) {
         res.json({ text: response.text() });
 
     } catch (error) {
-        console.error("SDK Error:", error);
+        console.error("AI Error:", error);
         res.status(500).json({ error: error.message });
     }
 }
 
-// ΤΑ ΣΩΣΤΑ ENDPOINTS ΜΕ ΤΑ ΕΠΙΣΗΜΑ IDs
-// 2.5 Flash 
+// Endpoints
 app.post('/api/chat', (req, res) => processAIRequest(req, res, "gemini-2.5-flash"));
 app.post('/api/multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-2.5-flash"));
 
-// 3.0 Flash
 app.post('/api/advanced-chat', (req, res) => processAIRequest(req, res, "gemini-3-flash-preview"));
 app.post('/api/advanced-multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-3-flash-preview"));
 
