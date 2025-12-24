@@ -33,11 +33,14 @@ app.post('/api/chat', async (req, res) => {
 	const prompt = req.body.prompt;
 
 	const chat = ai.chats.create({
-		model: "gemini-2.5-flash-preview-09-2025",
+		model: "gemini-2.5-flash",
 		history: req.body.history || [],
 		config: {
 			// **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγωγή δομημένης HTML
 			systemInstruction: SYSTEM_INSTRUCTION,
+			thinkingConfig: {
+      thinkingBudget: -1,
+    }
 		},
 	});
 
@@ -103,7 +106,7 @@ app.post('/api/multimodal-chat', async (req, res) => {
 
 	// Το Gemini Vision μοντέλο είναι το gemini-2.5-flash (ή το pro)
 	const chat = ai.chats.create({
-		model: "gemini-2.5-flash-preview-09-2025", // Υποστηρίζει Vision
+		model: "gemini-2.5-flash", // Υποστηρίζει Vision
 		history: history || [],
 		config: {
 			// **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγωγή δομημένης HTML
