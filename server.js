@@ -1,52 +1,61 @@
 import 'dotenv/config'; 
 import express from 'express'; 
-import { GoogleGenAI } from "@google/genai";
+import { createGoogleGenerativeAI } from "@google/genai"; // Νέος τρόπος εισαγωγής
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY);
+
+// Αρχικοποίηση με το νέο SDK
+const ai = createGoogleGenerativeAI({ 
+    apiKey: process.env.GEMINI_API_KEY 
+});
 
 app.use(express.static('public')); 
 app.use(express.json({ limit: '50mb' }));
 
-async function processAIRequest(req, res, modelName) {
+async function processAIRequest(req, res, modelId) {
     try {
         const { prompt, history, image, mimeType } = req.body;
 
         if (!prompt) return res.status(400).json({ error: "Missing prompt." });
 
-        const model = genAI.getGenerativeModel({ 
-            model: modelName,
-            systemInstruction: "Your name is Zen, personal assistant for OxyZen Browser. Write thought process in <div class='thought'>...</div> and use HTML for response." 
-        });
+        // Στο νέο SDK χρησιμοποιούμε το ai.models.get
+        const model = ai.models.get(modelId);
+
+        const systemInstruction = "Your name is Zen, personal assistant for OxyZen Browser. Write thought process in <div class='thought'>...</div> and use HTML for response.";
 
         let result;
         if (image && mimeType) {
-            // MULTIMODAL (Εικόνα + Κείμενο)
+            // Multimodal κλήση
             const imagePart = { inlineData: { data: image, mimeType: mimeType } };
-            // Σημείωση: Για multimodal αποφεύγουμε το startChat αν υπάρχει εικόνα στο τρέχον request
-            result = await model.generateContent([prompt, imagePart]);
+            result = await model.generateContent({
+                contents: [{ role: "user", parts: [imagePart, { text: prompt }] }],
+                systemInstruction: systemInstruction
+            });
         } else {
-            // TEXT ONLY (Με Ιστορικό)
-            const chat = model.startChat({ history: history || [] });
-            result = await chat.sendMessage(prompt);
+            // Text-only κλήση με ιστορικό
+            result = await model.generateContent({
+                contents: [...(history || []), { role: "user", parts: [{ text: prompt }] }],
+                systemInstruction: systemInstruction
+            });
         }
 
         const response = await result.response;
         res.json({ text: response.text() });
 
     } catch (error) {
-        console.error("AI Communication Error:", error);
-        // Επιστρέφουμε το πραγματικό μήνυμα σφάλματος για να το δεις στο Android
-        res.status(500).json({ error: error.message || "Unknown AI Error" });
+        console.error("SDK Error:", error);
+        res.status(500).json({ error: error.message });
     }
 }
 
-// ΠΡΟΣΟΧΗ: Αυτά είναι τα ΜΟΝΑ έγκυρα IDs για το SDK αυτή τη στιγμή
-app.post('/api/chat', (req, res) => processAIRequest(req, res, "gemini-1.5-flash")); 
-app.post('/api/multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-1.5-flash"));
+// ΤΑ ΣΩΣΤΑ ENDPOINTS ΜΕ ΤΑ ΕΠΙΣΗΜΑ IDs
+// 2.5 Flash 
+app.post('/api/chat', (req, res) => processAIRequest(req, res, "gemini-2.5-flash"));
+app.post('/api/multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-2.5-flash"));
 
-app.post('/api/advanced-chat', (req, res) => processAIRequest(req, res, "gemini-2.0-flash")); 
-app.post('/api/advanced-multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-2.0-flash"));
+// 3.0 Flash
+app.post('/api/advanced-chat', (req, res) => processAIRequest(req, res, "gemini-3-flash-preview"));
+app.post('/api/advanced-multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-3-flash-preview"));
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
