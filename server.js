@@ -68,12 +68,12 @@ async function processAIRequest(req, res, modelName) {
 }
 
 // --- ENDPOINTS ΓΙΑ GEMINI 2.5 FLASH ---
-app.post('/api/chat', (req, res) => processAIRequest(req, res, "gemini-2.5-flash")); // Σημείωση: Το 2.5 flash αντιστοιχεί συνήθως σε 1.5 flash στο SDK
-app.post('/api/multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-2.5-flash"));
+app.post('/api/chat', (req, res) => processAIRequest(req, res, "gemini-1.5-flash")); // Σημείωση: Το 2.5 flash αντιστοιχεί συνήθως σε 1.5 flash στο SDK
+app.post('/api/multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-1.5-flash"));
 
 // --- ENDPOINTS ΓΙΑ GEMINI 3.0 FLASH (Advanced) ---
-app.post('/api/advanced-chat', (req, res) => processAIRequest(req, res, "gemini-3-flash-preview")); // Χρησιμοποιήστε το όνομα μοντέλου που παρέχει η Google για το 3.0/2.0
-app.post('/api/advanced-multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-3-flash-preview"));
+app.post('/api/advanced-chat', (req, res) => processAIRequest(req, res, "gemini-2.0-flash")); // Χρησιμοποιήστε το όνομα μοντέλου που παρέχει η Google για το 3.0/2.0
+app.post('/api/advanced-multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-2.0-flash"));
 
 // ΜΟΝΟ ΕΝΑ app.listen στο τέλος του αρχείου για να αποφύγουμε το κρασάρισμα
 app.listen(PORT, () => {
