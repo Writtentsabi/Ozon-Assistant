@@ -57,6 +57,37 @@ app.post('/api/chat', async (req, res) => {
 	}
 });
 
+app.post('/api/thinking-chat', async (req, res) => {
+
+	const prompt = req.body.prompt;
+
+	const chat = ai.chats.create({
+		model: "gemini-2.5-flash",
+		history: req.body.history || [],
+		config: {
+			systemInstruction: SYSTEM_INSTRUCTION,
+			includeThoughts: true,
+		},
+	});
+
+	try {
+		const response = await chat.sendMessage({
+			message: prompt,
+		});
+
+		res.json({
+			text: response.text,
+			thought: response.thought || "" 
+		});
+
+	} catch (error) {
+		console.error("Gemini Chat Error:", error);
+		res.status(500).json({
+			error: "Server error during Gemini chat call."
+		});
+	}
+});
+
 // 3. ΤΟ ΝΕΟ API ENDPOINT ΓΙΑ ΕΙΚΟΝΕΣ + CHAT (Multimodal Chat)
 app.post('/api/multimodal-chat', async (req, res) => {
 	const {
@@ -97,6 +128,57 @@ app.post('/api/multimodal-chat', async (req, res) => {
 
 		res.json({
 			text: response.text
+		});
+
+	} catch (error) {
+		console.error("Gemini Multimodal Error:", error);
+		res.status(500).json({
+			error: "Server error during Gemini Multimodal chat call."
+		});
+	}
+});
+
+app.post('/api/thinking-multimodal-chat', async (req, res) => {
+	const {
+		prompt, image, mimeType, history
+	} = req.body;
+
+	if (!image || !prompt) {
+		return res.status(400).json({
+			error: "Missing image data or prompt for multimodal chat."
+		});
+	}
+
+	// Το Gemini Vision μοντέλο είναι το gemini-2.5-flash (ή το pro)
+	const chat = ai.chats.create({
+		model: "gemini-2.5-flash", // Υποστηρίζει Vision
+		history: history || [],
+		config: {
+			systemInstruction: SYSTEM_INSTRUCTION,
+			includeThoughts: true,
+		},
+	});
+
+	// Δημιουργία του αντικειμένου μέρους (Part Object) για το Gemini
+	const imagePart = {
+		inlineData: {
+			data: image,
+			mimeType: mimeType
+		}
+	};
+
+	try {
+		// Στέλνουμε το prompt και την εικόνα ως ξεχωριστά μέρη
+		const messageParts = [imagePart,
+			prompt];
+
+		const response = await chat.sendMessage({
+			message: messageParts,
+		});
+
+		res.json({
+			text: response.text,
+			thought: response.thought || ""
 		});
 
 	} catch (error) {
