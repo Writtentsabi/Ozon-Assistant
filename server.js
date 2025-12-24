@@ -6,7 +6,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Αρχικοποίηση με το νέο SDK
-const ai = createGoogleGenerativeAI({ 
+const ai = GoogleGenAI({ 
     apiKey: process.env.GEMINI_API_KEY 
 });
 
