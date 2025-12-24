@@ -25,7 +25,12 @@ app.use(express.json({
 	limit: '50mb'
 }));
 
-const SYSTEM_INSTRUCTION = "Your name is Zen, you are the personal assistant for the OxyZen Browser. An app uploaded also on Play Store. You MUST use structured HTML tags (e.g., <p>, <ul>, <strong>) which will be inserted directly into the page's innerHTML. Do not include <html> or <body> tags.";
+const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for the OxyZen Browser. 
+An app uploaded also on Play Store. 
+IMPORTANT: You must start every response by thinking about the user's request. 
+Wrap your thoughts inside a <div class="thought">...</div> tag. 
+Then, provide your actual response using structured HTML tags (e.g., <p>, <ul>, <strong>). 
+Do not include <html> or <body> tags.`;
 
 // 2. Το API Endpoint για Συνομιλία (Text-Only Chat)
 app.post('/api/chat', async (req, res) => {
@@ -47,39 +52,6 @@ app.post('/api/chat', async (req, res) => {
 
 		res.json({
 			text: response.text
-		});
-
-	} catch (error) {
-		console.error("Gemini Chat Error:", error);
-		res.status(500).json({
-			error: "Server error during Gemini chat call."
-		});
-	}
-});
-
-app.post('/api/thinking-chat', async (req, res) => {
-
-	const prompt = req.body.prompt;
-
-	const chat = ai.chats.create({
-		model: "gemini-2.5-flash",
-		history: req.body.history || [],
-		config: {
-			systemInstruction: SYSTEM_INSTRUCTION,
-			thinkingConfig: {
-				includeThoughts: true,
-			},
-		},
-	});
-
-	try {
-		const response = await chat.sendMessage({
-			message: prompt,
-		});
-
-		res.json({
-			text: response.text,
-			thought: response.thought || ""
 		});
 
 	} catch (error) {
@@ -130,62 +102,6 @@ app.post('/api/multimodal-chat', async (req, res) => {
 
 		res.json({
 			text: response.text
-		});
-
-	} catch (error) {
-		console.error("Gemini Multimodal Error:", error);
-		res.status(500).json({
-			error: "Server error during Gemini Multimodal chat call."
-		});
-	}
-});
-
-app.post('/api/thinking-multimodal-chat', async (req, res) => {
-	const {
-		prompt,
-		image,
-		mimeType,
-		history
-	} = req.body;
-
-	if (!image || !prompt) {
-		return res.status(400).json({
-			error: "Missing image data or prompt for multimodal chat."
-		});
-	}
-
-	// Το Gemini Vision μοντέλο είναι το gemini-2.5-flash (ή το pro)
-	const chat = ai.chats.create({
-		model: "gemini-2.5-flash", // Υποστηρίζει Vision
-		history: history || [],
-		config: {
-			systemInstruction: SYSTEM_INSTRUCTION,
-			thinkingConfig: {
-				includeThoughts: true,
-			},
-		},
-	});
-
-	// Δημιουργία του αντικειμένου μέρους (Part Object) για το Gemini
-	const imagePart = {
-		inlineData: {
-			data: image,
-			mimeType: mimeType
-		}
-	};
-
-	try {
-		// Στέλνουμε το prompt και την εικόνα ως ξεχωριστά μέρη
-		const messageParts = [imagePart,
-			prompt];
-
-		const response = await chat.sendMessage({
-			message: messageParts,
-		});
-
-		res.json({
-			text: response.text,
-			thought: response.thought || ""
 		});
 
 	} catch (error) {
