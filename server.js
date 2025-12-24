@@ -11,6 +11,7 @@ import {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 // ΑΣΦΑΛΕΙΑ: Χρήση του κλειδιού από το Render Environment
 const ai = new GoogleGenAI( {
@@ -50,7 +51,7 @@ app.post('/api/chat', async (req, res) => {
 	const prompt = req.body.prompt;
 
 	const chat = ai.chats.create({
-		model: "gemini-2.5-flash",
+		model: MODEL_NAME,
 		history: req.body.history || [],
 		config: {
 			systemInstruction: SYSTEM_INSTRUCTION,
@@ -88,7 +89,7 @@ app.post('/api/multimodal-chat', async (req, res) => {
 
 	// Το Gemini Vision μοντέλο είναι το gemini-2.5-flash (ή το pro)
 	const chat = ai.chats.create({
-		model: "gemini-2.5-flash", // Υποστηρίζει Vision
+		model: MODEL_NAME, // Υποστηρίζει Vision
 		history: history || [],
 		config: {
 			systemInstruction: SYSTEM_INSTRUCTION,
