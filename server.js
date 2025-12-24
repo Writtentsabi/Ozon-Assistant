@@ -1,4 +1,4 @@
-// server.js (Διορθωμένο για παραγωγή δομημένης HTML)
+// server.js (Ενημερωμένο με Thinking Config για Gemini 3)
 
 import 'dotenv/config';
 import express from 'express';
@@ -8,51 +8,44 @@ import {
 import {
 	Buffer
 } from 'buffer';
+import * as fs from "node:fs";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Το SYSTEM_INSTRUCTION παραμένει για να καθοδηγεί τη δομή της HTML
 const SYSTEM_INSTRUCTION = "Your name is Zen, you are the personal assistant for the OxyZen Browser. An app uploaded also on Play Store. You MUST write your thought process or reasoning first inside a <div> tag with the class 'thought' (e.g., <div class='thought'>My thought process...</div>). The rest of your response MUST use structured HTML tags (e.g., <p>, <ul>, <strong>) which will be inserted directly into the page's innerHTML. Do not include <html> or <body> tags.";
 
-// ΑΣΦΑΛΕΙΑ: Χρήση του κλειδιού από το Render Environment
-const ai = new GoogleGenAI( {
+const ai = new GoogleGenAI({
 	apiKey: process.env.GEMINI_API_KEY
 });
 
-// 1. Ρύθμιση για Static Files (HTML, CSS, Client JS)
+// 1. Ρύθμιση για Static Files
 app.use(express.static('public'));
 
-// ΔΙΟΡΘΩΣΗ: Αύξηση του ορίου μεγέθους του JSON body για να δεχτεί μεγάλες εικόνες (Base64)
+// Όριο μεγέθους για Base64 εικόνες
 app.use(express.json({
 	limit: '50mb'
 }));
 
-// 2. Το API Endpoint για Συνομιλία (Text-Only Chat)
+// 2. API Endpoint: Standard Chat (Gemini 2.5 Flash - Δεν υποστηρίζει Thinking Config)
 app.post('/api/chat', async (req, res) => {
-
 	const prompt = req.body.prompt;
-
 	const chat = ai.chats.create({
 		model: "gemini-2.5-flash",
 		history: req.body.history || [],
 		config: {
-			// **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγωγή δομημένης HTML
 			systemInstruction: SYSTEM_INSTRUCTION,
-			thinkingConfig: {
-      thinkingBudget: -1,
-    }
 		},
 	});
 
 	try {
-		const response = await chat.sendMessage({
+		const result = await chat.sendMessage({
 			message: prompt,
 		});
-
 		res.json({
-			text: response.text
+			text: result.response.text()
 		});
-
 	} catch (error) {
 		console.error("Ozor Error:", error);
 		res.status(500).json({
@@ -61,29 +54,32 @@ app.post('/api/chat', async (req, res) => {
 	}
 });
 
-//3. API ΓΙΑ CHAT ΜΕ ΚΑΙΝΟΥΡΙΟ ΜΟΝΤΕΛΟ
+// 3. API Endpoint: Advanced Chat (Gemini 3 Flash - ΜΕ THINKING CONFIG)
 app.post('/api/advanced-chat', async (req, res) => {
-
 	const prompt = req.body.prompt;
 
 	const chat = ai.chats.create({
 		model: "gemini-3-flash-preview",
 		history: req.body.history || [],
 		config: {
-			// **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγω>
 			systemInstruction: SYSTEM_INSTRUCTION,
+			// Ενεργοποίηση της παραγωγής σκέψεων
+			thinkingConfig: {
+				includeThoughts: true
+			},
 		},
 	});
 
 	try {
-		const response = await chat.sendMessage({
+		const result = await chat.sendMessage({
 			message: prompt,
 		});
 
+		// Επιστρέφουμε το κείμενο ΚΑΙ τα thoughts ξεχωριστά
 		res.json({
-			text: response.text
+			text: result.response.text(),
+			thoughts: result.response.thoughts || "" 
 		});
-
 	} catch (error) {
 		console.error("Ozor Error:", error);
 		res.status(500).json({
@@ -92,50 +88,34 @@ app.post('/api/advanced-chat', async (req, res) => {
 	}
 });
 
-// 4. ΤΟ ΝΕΟ API ENDPOINT ΓΙΑ ΕΙΚΟΝΕΣ + CHAT (Multimodal Chat)
+// 4. API Endpoint: Multimodal Chat (Gemini 2.5 Flash)
 app.post('/api/multimodal-chat', async (req, res) => {
-	const {
-		prompt, image, mimeType, history
-	} = req.body;
+	const { prompt, image, mimeType, history } = req.body;
 
 	if (!image || !prompt) {
-		return res.status(400).json({
-			error: "Missing image data or prompt for multimodal chat."
-		});
+		return res.status(400).json({ error: "Missing image data or prompt." });
 	}
 
-	// Το Gemini Vision μοντέλο είναι το gemini-2.5-flash (ή το pro)
 	const chat = ai.chats.create({
-		model: "gemini-2.5-flash", // Υποστηρίζει Vision
+		model: "gemini-2.5-flash",
 		history: history || [],
 		config: {
-			// **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγωγή δομημένης HTML
 			systemInstruction: SYSTEM_INSTRUCTION,
-
 		},
 	});
 
-	// Δημιουργία του αντικειμένου μέρους (Part Object) για το Gemini
 	const imagePart = {
-		inlineData: {
-			data: image,
-			mimeType: mimeType
-		}
+		inlineData: { data: image, mimeType: mimeType }
 	};
 
 	try {
-		// Στέλνουμε το prompt και την εικόνα ως ξεχωριστά μέρη
-		const messageParts = [imagePart,
-			prompt];
-
-		const response = await chat.sendMessage({
+		const messageParts = [imagePart, prompt];
+		const result = await chat.sendMessage({
 			message: messageParts,
 		});
-
 		res.json({
-			text: response.text
+			text: result.response.text()
 		});
-
 	} catch (error) {
 		console.error("Zen Error:", error);
 		res.status(500).json({
@@ -144,53 +124,40 @@ app.post('/api/multimodal-chat', async (req, res) => {
 	}
 });
 
-//5.API ΓΙΑ ΑΠΟΣΤΟΛΗ ΕΙΚΟΝΩΝ ΜΕ ΑΝΑΒΑΘΜΙΣΜΕΝΟ ΜΟΝΤΕΛΟ
+// 5. API Endpoint: Advanced Multimodal Chat (Gemini 3 Flash - ΜΕ THINKING CONFIG)
 app.post('/api/advanced-multimodal-chat', async (req, res) => {
-	const {
-		prompt,
-		image,
-		mimeType,
-		history
-	} = req.body;
+	const { prompt, image, mimeType, history } = req.body;
 
 	if (!image || !prompt) {
-		return res.status(400).json({
-			error: "Missing image data or prompt for multimodal chat."
-		});
+		return res.status(400).json({ error: "Missing image data or prompt." });
 	}
 
-	// Το Gemini Vision μοντέλο είναι το gemini-3-flash-preview
 	const chat = ai.chats.create({
-		model: "gemini-3-flash-preview", // Υποστηρίζει Vision
+		model: "gemini-3-flash-preview",
 		history: history || [],
 		config: {
-			// **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγωγή δομημένης HTML
 			systemInstruction: SYSTEM_INSTRUCTION,
-
+			// Ενεργοποίηση της παραγωγής σκέψεων για Vision tasks
+			thinkingConfig: {
+				includeThoughts: true
+			},
 		},
 	});
 
-	// Δημιουργία του αντικειμένου μέρους (Part Object) για το Gemini
 	const imagePart = {
-		inlineData: {
-			data: image,
-			mimeType: mimeType
-		}
+		inlineData: { data: image, mimeType: mimeType }
 	};
 
 	try {
-		// Στέλνουμε το prompt και την εικόνα ως ξεχωριστά μέρη
-		const messageParts = [imagePart,
-			prompt];
-
-		const response = await chat.sendMessage({
+		const messageParts = [imagePart, prompt];
+		const result = await chat.sendMessage({
 			message: messageParts,
 		});
 
 		res.json({
-			text: response.text
+			text: result.response.text(),
+			thoughts: result.response.thoughts || ""
 		});
-
 	} catch (error) {
 		console.error("Zen Error:", error);
 		res.status(500).json({
