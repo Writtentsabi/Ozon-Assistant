@@ -62,7 +62,7 @@ app.post('/api/multimodal-chat', async (req, res) => {
         model: "gemini-2.5-flash", // Υποστηρίζει Vision
         history: history || [], 
         config: {
-            systemInstruction: SYSTEM-INSTRUCTION,
+            systemInstruction: SYSTEM_INSTRUCTION,
         },
     });
     
