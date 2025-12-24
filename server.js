@@ -33,7 +33,7 @@ app.post('/api/chat', async (req, res) => {
 	const prompt = req.body.prompt;
 
 	const chat = ai.chats.create({
-		model: "gemini-2.5-flash",
+		model: "gemini-2.5-flash-preview-09-2025",
 		history: req.body.history || [],
 		config: {
 			// **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγωγή δομημένης HTML
@@ -64,7 +64,7 @@ app.post('/api/advanced-chat', async (req, res) => {
 	const prompt = req.body.prompt;
 
 	const chat = ai.chats.create({
-		model: "gemini-3.0-flash",
+		model: "gemini-3-flash-preview",
 		history: req.body.history || [],
 		config: {
 			// **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγω>
@@ -103,7 +103,7 @@ app.post('/api/multimodal-chat', async (req, res) => {
 
 	// Το Gemini Vision μοντέλο είναι το gemini-2.5-flash (ή το pro)
 	const chat = ai.chats.create({
-		model: "gemini-2.5-flash", // Υποστηρίζει Vision
+		model: "gemini-2.5-flash-preview-09-2025", // Υποστηρίζει Vision
 		history: history || [],
 		config: {
 			// **ΔΙΟΡΘΩΣΗ: Ενισχυμένη οδηγία για παραγωγή δομημένης HTML
@@ -142,7 +142,7 @@ app.post('/api/multimodal-chat', async (req, res) => {
 });
 
 //5.API ΓΙΑ ΑΠΟΣΤΟΛΗ ΕΙΚΟΝΩΝ ΜΕ ΑΝΑΒΑΘΜΙΣΜΕΝΟ ΜΟΝΤΕΛΟ
-app.post('/api/multimodal-chat', async (req, res) => {
+app.post('/api/advanced-multimodal-chat', async (req, res) => {
 	const {
 		prompt,
 		image,
