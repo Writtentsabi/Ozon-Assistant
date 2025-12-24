@@ -1,12 +1,12 @@
 import 'dotenv/config'; 
 import express from 'express'; 
-import { GoogleGenAI } from "@google/genai";
+import { createGoogleAI } from "@google/genai"; // Σωστό import για το νέο SDK
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Αρχικοποίηση - Χρήση 'new' γιατί είναι Class
-const ai = new GoogleGenAI({ 
+// Αρχικοποίηση χωρίς 'new' - χρήση της createGoogleAI
+const ai = createGoogleAI({ 
     apiKey: process.env.GEMINI_API_KEY 
 });
 
@@ -22,16 +22,18 @@ async function processAIRequest(req, res, modelId) {
         const systemInstruction = "Your name is Zen, personal assistant for OxyZen Browser. Write thought process in <div class='thought'>...</div> and use HTML for response.";
 
         let result;
+        
+        // Στο @google/genai η κλήση γίνεται μέσω του ai.models.generateContent
         if (image && mimeType) {
-            // MULTIMODAL: Στο νέο SDK καλούμε το ai.generateContent
-            result = await ai.generateContent({
+            // MULTIMODAL
+            result = await ai.models.generateContent({
                 model: modelId,
                 contents: [{ role: "user", parts: [{ inlineData: { data: image, mimeType: mimeType } }, { text: prompt }] }],
                 systemInstruction: systemInstruction
             });
         } else {
-            // TEXT ONLY: Με ιστορικό
-            result = await ai.generateContent({
+            // TEXT ONLY
+            result = await ai.models.generateContent({
                 model: modelId,
                 contents: [...(history || []), { role: "user", parts: [{ text: prompt }] }],
                 systemInstruction: systemInstruction
@@ -49,9 +51,6 @@ async function processAIRequest(req, res, modelId) {
 
 // Endpoints με τα σωστά IDs
 app.post('/api/chat', (req, res) => processAIRequest(req, res, "gemini-2.5-flash"));
-app.post('/api/multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-2.5-flash"));
-
 app.post('/api/advanced-chat', (req, res) => processAIRequest(req, res, "gemini-3-flash-preview"));
-app.post('/api/advanced-multimodal-chat', (req, res) => processAIRequest(req, res, "gemini-3-flash-preview"));
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
