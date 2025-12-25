@@ -59,7 +59,7 @@ app.post('/api/chat', async (req, res) => {
 	});
 
 	try {
-		const response = await chat.sendMessageStream({
+		const response = await chat.sendMessage({
 			message: prompt,
 		});
 
@@ -109,7 +109,7 @@ app.post('/api/multimodal-chat', async (req, res) => {
 		const messageParts = [imagePart,
 			prompt];
 
-		const response = await chat.sendMessageStream({
+		const response = await chat.sendMessage({
 			message: messageParts,
 		});
 
