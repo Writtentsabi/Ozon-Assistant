@@ -75,55 +75,49 @@ app.post('/api/chat', async (req, res) => {
 	}
 });
 
-// 3. ΤΟ ΝΕΟ API ENDPOINT ΓΙΑ ΕΙΚΟΝΕΣ + CHAT (Multimodal Chat)
 app.post('/api/multimodal-chat', async (req, res) => {
 	const {
-		prompt, image, mimeType, history
+		prompt, images, mimeType, history // Αλλάζουμε το image σε images
 	} = req.body;
 
-	if (!image || !prompt) {
+	if (!images || !Array.isArray(images) || !prompt) {
 		return res.status(400).json({
-			error: "Missing image data or prompt for multimodal chat."
+			error: "Πρέπει να στείλετε μια λίστα εικόνων (images array) και ένα prompt."
 		});
 	}
 
-	// Το Gemini Vision μοντέλο είναι το gemini-2.5-flash (ή το pro)
 	const chat = ai.chats.create({
-		model: MODEL_NAME, // Υποστηρίζει Vision
+		model: MODEL_NAME,
 		history: history || [],
 		config: {
 			systemInstruction: SYSTEM_INSTRUCTION,
 		},
 	});
 
-	// Δημιουργία του αντικειμένου μέρους (Part Object) για το Gemini
-	const imagePart = {
-		inlineData: {
-			data: image,
-			mimeType: mimeType
-		}
-	};
-
 	try {
-		// Στέλνουμε το prompt και την εικόνα ως ξεχωριστά μέρη
-		const messageParts = [imagePart,
-			prompt];
+		// Μετατρέπουμε κάθε base64 string της λίστας σε αντικείμενο inlineData
+		const imageParts = images.map(imgBase64 => ({
+			inlineData: {
+				data: imgBase64,
+				mimeType: mimeType || "image/jpeg"
+			}
+		}));
+
+		// Προσθέτουμε το prompt στο τέλος της λίστας των μερών
+		const messageParts = [...imageParts, prompt];
 
 		const response = await chat.sendMessage({
 			message: messageParts,
 		});
 
-		res.json({
-			text: response.text
-		});
+		res.json({ text: response.text });
 
 	} catch (error) {
 		console.error("Gemini Multimodal Error:", error);
-		res.status(500).json({
-			error: "Server error during Gemini Multimodal chat call."
-		});
+		res.status(500).json({ error: "Server error." });
 	}
 });
+
 
 app.listen(PORT, () => {
 	console.log(`Server running on port ${PORT}`);
