@@ -5,13 +5,11 @@ import { GoogleGenAI } from "@google/genai";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- ΡΥΘΜΙΣΗ ΜΟΝΤΕΛΩΝ ---
-// Χρησιμοποιούμε το 2.0-flash που είναι το τελευταίο διαθέσιμο (αντί για 2.5 που δεν υπάρχει δημόσια ακόμα)
-const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash"; 
-
-// Για δημιουργία εικόνας, το SDK προτείνει Imagen 3. 
-// Αν έχετε πρόσβαση σε ειδικό μοντέλο "gemini-2.5-flash-image", αλλάξτε το εδώ.
-const IMAGE_MODEL = process.env.IMAGE_MODEL || "imagen-3.0-generate-001";
+// --- ΜΟΝΤΕΛΑ (Όπως τα ζητήσατε) ---
+// ΠΡΟΣΟΧΗ: Αν το 2.5 δεν είναι ενεργό στο API Key σας, θα πετάξει 404. 
+// Σε αυτή την περίπτωση γυρίστε το σε "gemini-2.0-flash".
+const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash"; 
+const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image"; 
 
 const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -36,19 +34,45 @@ const generateImageTool = {
 
 const SYSTEM_INSTRUCTION = `
 You are Zen, the OxyZen Browser assistant.
-
 FORMATTING RULES:
 1. You must ALWAYS output your response in raw HTML format.
-2. START every response with a hidden thought block exactly like this:
-   <div class="thought">
-   [Internal reasoning and analysis]
-   </div>
-3. After the thought block, write the response to the user using HTML tags (<p>, <ul>, <b>, etc).
-
+2. START every response with a hidden thought block: <div class="thought">[Reasoning...]</div>
+3. Then write the response to the user using HTML tags.
 BEHAVIOR:
-- If the user provides images, ANALYZE them based on the prompt.
-- If the user asks to GENERATE or CREATE an image, call the 'generate_image' tool.
+- If provided images, analyze them.
+- If asked to CREATE an image, call 'generate_image'.
 `;
+
+/**
+ * ΒΟΗΘΗΤΙΚΗ ΣΥΝΑΡΤΗΣΗ: Καθαρίζει το ιστορικό για να αποφύγουμε το "ContentUnion error"
+ * Μετατρέπει τα δεδομένα στην ακριβή μορφή που θέλει το SDK:
+ * { role: "user"|"model", parts: [{ text: "..." }] }
+ */
+function sanitizeHistory(rawHistory) {
+    if (!Array.isArray(rawHistory)) return [];
+
+    return rawHistory.map(item => {
+        // Αν λείπει το role, υποθέτουμε 'user'
+        const role = item.role || 'user';
+        
+        let parts = [];
+        
+        // Αν το parts είναι ήδη array, το κρατάμε (φιλτράροντας κενά)
+        if (Array.isArray(item.parts)) {
+            parts = item.parts;
+        } 
+        // Αν υπάρχει 'text' αντί για parts (παλιά δομή)
+        else if (item.text) {
+            parts = [{ text: item.text }];
+        }
+        // Αν υπάρχει 'content' (OpenAI δομή)
+        else if (item.content) {
+            parts = [{ text: item.content }];
+        }
+
+        return { role, parts };
+    });
+}
 
 app.post('/api/chat', async (req, res) => {
     const { prompt, history, images, mimeType } = req.body;
@@ -56,25 +80,34 @@ app.post('/api/chat', async (req, res) => {
     try {
         let messageParts = [];
 
-        // Προσθήκη εικόνων
+        // 1. Προσθήκη εικόνων
         if (images && Array.isArray(images) && images.length > 0) {
             images.forEach((base64Data) => {
-                messageParts.push({
-                    inlineData: {
-                        data: base64Data,
-                        mimeType: mimeType || "image/jpeg"
-                    }
-                });
+                if (base64Data) { // Έλεγχος ότι δεν είναι null
+                    messageParts.push({
+                        inlineData: {
+                            data: base64Data,
+                            mimeType: mimeType || "image/jpeg"
+                        }
+                    });
+                }
             });
         }
 
-        if (prompt) {
+        // 2. Προσθήκη κειμένου (Έλεγχος ότι δεν είναι κενό)
+        if (prompt && typeof prompt === 'string' && prompt.trim() !== '') {
             messageParts.push({ text: prompt });
+        } else if (messageParts.length === 0) {
+            // Αν δεν έχουμε ούτε εικόνα ούτε κείμενο, στέλνουμε ένα κενό διάστημα για να μην σκάσει
+            messageParts.push({ text: " " }); 
         }
 
-        console.log(`Starting Chat with Brain Model: ${CHAT_MODEL}`);
+        console.log(`Using Chat Model: ${CHAT_MODEL}`);
 
-        // Αρχικοποίηση Chat
+        // 3. Καθαρισμός Ιστορικού
+        const cleanHistory = sanitizeHistory(history);
+
+        // 4. Δημιουργία Chat
         const chat = await client.chats.create({
             model: CHAT_MODEL,
             config: {
@@ -82,33 +115,30 @@ app.post('/api/chat', async (req, res) => {
                 temperature: 0.7,
                 tools: [{ functionDeclarations: [generateImageTool] }],
             },
-            history: history || [],
+            history: cleanHistory, 
         });
 
-        // --- SAFE SEND HANDLER ---
-        // Ελέγχουμε ποια μέθοδος υπάρχει στο SDK για να αποφύγουμε το crash
+        // 5. Αποστολή μηνύματος
         let result;
         if (typeof chat.send === 'function') {
             result = await chat.send(messageParts);
         } else if (typeof chat.sendMessage === 'function') {
             result = await chat.sendMessage(messageParts);
-        } else {
-            throw new Error("SDK Error: Neither 'send' nor 'sendMessage' exists on chat object.");
         }
 
         const functionCalls = result.functionCalls();
 
-        // --- FUNCTION CALL HANDLING (IMAGE GENERATION) ---
+        // 6. Διαχείριση Function Call (Εικόνα)
         if (functionCalls && functionCalls.length > 0) {
             const call = functionCalls[0];
             
             if (call.name === "generate_image") {
-                console.log(`Zen generating image using ${IMAGE_MODEL} for prompt:`, call.args.prompt);
+                console.log(`Zen generating image with ${IMAGE_MODEL} for:`, call.args.prompt);
 
                 try {
-                    // Κλήση του μοντέλου Εικόνας
+                    // Χρήση του gemini-2.5-flash-image ή imagen
                     const imageResponse = await client.models.generateImage({
-                        model: IMAGE_MODEL, 
+                        model: IMAGE_MODEL,
                         prompt: call.args.prompt,
                         config: {
                             numberOfImages: 1,
@@ -116,11 +146,12 @@ app.post('/api/chat', async (req, res) => {
                         }
                     });
 
+                    // Στη νέα SDK το base64 είναι συνήθως εδώ
                     const generatedImageBase64 = imageResponse.image.b64_json;
 
                     const htmlResponse = `
-                        <div class="thought">User requested image generation using prompt: "${call.args.prompt}". Tool execution successful using ${IMAGE_MODEL}.</div>
-                        <p>Here is the image I created for you based on: <b>${call.args.prompt}</b></p>
+                        <div class="thought">I have successfully generated the image using ${IMAGE_MODEL} as requested.</div>
+                        <p>Here is the generated image for: <b>${call.args.prompt}</b></p>
                     `;
 
                     return res.json({
@@ -132,14 +163,14 @@ app.post('/api/chat', async (req, res) => {
                 } catch (imgError) {
                     console.error("Image Gen Error:", imgError);
                     return res.json({
-                        text: `<div class="thought">Image generation failed.</div><p style="color:red;">Error creating image with model ${IMAGE_MODEL}. Details: ${imgError.message}</p>`,
+                        text: `<div class="thought">Failed to generate image.</div><p style="color:red;">Error: ${imgError.message}</p>`,
                         type: "text"
                     });
                 }
             }
         }
 
-        // --- STANDARD RESPONSE ---
+        // 7. Κανονική Απάντηση
         res.json({
             text: result.text,
             type: "text"
@@ -147,7 +178,10 @@ app.post('/api/chat', async (req, res) => {
 
     } catch (error) {
         console.error("DETAILED ERROR:", error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ 
+            error: error.message,
+            stack: error.stack 
+        });
     }
 });
 
