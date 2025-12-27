@@ -1,113 +1,141 @@
+// server.js (Διορθωμένο)
+
 import 'dotenv/config';
 import express from 'express';
-import { GoogleGenAI } from "@google/genai";
+import {
+	GoogleGenAI
+} from "@google/genai";
+import {
+	Buffer
+} from 'buffer';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const IMAGE_MODEL
 
-// Χρήση μοντέλων από το .env
-const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash"; 
-const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image"; 
-
-const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-app.use(express.json({ limit: '100mb' }));
-app.use(express.static('public'));
-
-const generateImageTool = {
-    name: "generate_image",
-    description: "Generates an image based on a text prompt.",
-    parameters: {
-        type: "OBJECT",
-        properties: {
-            prompt: { type: "STRING", description: "The prompt for the image." }
-        },
-        required: ["prompt"],
-    },
-};
-
-const SYSTEM_INSTRUCTION = `You are Zen. Output ALWAYS in HTML. If asked for an image, call 'generate_image'.`;
-
-app.post('/api/chat', async (req, res) => {
-    const { prompt, history, images } = req.body;
-
-    try {
-        console.log("--- Request Received ---");
-        
-        let messageParts = [];
-        if (images && Array.isArray(images)) {
-            images.forEach(img => messageParts.push({ inlineData: { data: img, mimeType: "image/jpeg" } }));
-        }
-        if (prompt) messageParts.push({ text: prompt });
-
-        const cleanHistory = Array.isArray(history) ? history.map(item => ({
-            role: item.role || 'user',
-            parts: Array.isArray(item.parts) ? item.parts : [{ text: item.text || "" }]
-        })) : [];
-
-        // Κλήση στην Google
-        const result = await client.models.generateContent({
-            model: CHAT_MODEL,
-            contents: [...cleanHistory, { role: 'user', parts: messageParts }],
-            config: {
-                systemInstruction: SYSTEM_INSTRUCTION,
-                tools: [{ functionDeclarations: [generateImageTool] }],
-                safetySettings: [
-                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-                ]
-            },
-        });
-
-        const response = result.response;
-        const candidate = response.text;
-        const call = candidate.content.parts.find(p => p.functionCall);
-
-        // 2. ΕΛΕΓΧΟΣ ΓΙΑ FUNCTION CALL (Εικόνα)
-        if (call && call.functionCall.name === "generate_image") {
-            const promptForImg = call.functionCall.args.prompt;
-            try {
-                const imageRes = await client.models.generateImage({
-                    model: IMAGE_MODEL,
-                    prompt: promptForImg,
-                });
-
-                const b64 = imageRes.image.b64_json;
-
-                // ContentUnion Fix για να "κλείσει" το tool call
-                await client.models.generateContent({
-                    model: CHAT_MODEL,
-                    contents: [
-                        ...cleanHistory,
-                        { role: 'user', parts: messageParts },
-                        candidate.content,
-                        { role: 'tool', parts: [{ functionResponse: { name: "generate_image", response: { success: true } } }] }
-                    ]
-                });
-
-                return res.json({
-                    text: `<p>Η εικόνα δημιουργήθηκε: <b>${promptForImg}</b></p>`,
-                    generated_image: b64,
-                    type: "image_generated"
-                });
-            } catch (imgErr) {
-                return res.json({ text: `<p>Σφάλμα εικόνας: ${imgErr.message}</p>`, type: "text" });
-            }
-        }
-
-        // 3. ΧΡΗΣΗ ΤΟΥ RESPONSE.TEXT() ΜΕ ΑΣΦΑΛΕΙΑ
-        res.json({
-            text: response.text(),
-            type: "text"
-        });
-
-    } catch (error) {
-        console.error("SERVER ERROR:", error);
-        res.status(500).json({ error: error.message });
-    }
+// ΑΣΦΑΛΕΙΑ: Χρήση του κλειδιού από το Render Environment
+const ai = new GoogleGenAI( {
+	apiKey: process.env.GEMINI_API_KEY
 });
 
-app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+// 1. Ρύθμιση για Static Files (HTML, CSS, Client JS)
+app.use(express.static('public'));
 
+// ΔΙΟΡΘΩΣΗ: Αύξηση του ορίου μεγέθους του JSON body για να δεχτεί μεγάλες εικόνες (Base64)
+app.use(express.json({
+	limit: '50mb'
+}));
+
+const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for the OxyZen Browser.
+An app uploaded also on Play Store.
+
+CORE RULE: Every response MUST consist of two distinct sections.
+
+1. INTERNAL MONOLOGUE (The "Thought" process):
+- You must start every response with a <div class="thought"> tag.
+- In this section, analyze the user's intent, the context of the conversation, and your plan for the response.
+- Reflect on potential nuances, tone requirements, or specific information needed from the user's prompt.
+- This is your private reasoning space. Keep it analytical and objective.
+- Close this section with </div>.
+
+2. FINAL RESPONSE:
+- Immediately after the thought block, provide your actual response to the user.
+- Use structured HTML tags (e.g., <p>, <ul>, <strong>, <a>).
+- Maintain a helpful, Zen-like, and professional personality.
+- IMPORTANT: Do not include <html>, <head>, or <body> tags. 
+- Ensure the tone matches the "OxyZen Browser" brand: calm, efficient, and user-centric.`;
+
+// 2. Το API Endpoint για Συνομιλία (Text-Only Chat)
+app.post('/api/chat', async (req, res) => {
+
+	const prompt = req.body.prompt;
+
+	const chat = ai.chats.create({
+		model: CHAT_MODEL,
+		history: req.body.history || [],
+		config: {
+			systemInstruction: SYSTEM_INSTRUCTION,
+			tools: [{ googleSearch: {} }],
+			safetySettings: 
+			[
+				{
+					category: HARM_CATEGORY_SEXUALLY_EXPLICIT,
+					threshold: HarmCategory.BLOCK_NONE,
+				},
+			]
+		},
+	});
+
+	try {
+		const response = await chat.sendMessage({
+			message: prompt,
+		});
+
+		res.json({
+			text: response.text
+		});
+
+	} catch (error) {
+		console.error("Gemini Chat Error:", error);
+		res.status(500).json({
+			error: "Server error during Gemini chat call."
+		});
+	}
+});
+
+app.post('/api/multimodal-chat', async (req, res) => {
+	const {
+		prompt, images, mimeType, history // Αλλάζουμε το image σε images
+	} = req.body;
+
+	if (!images || !Array.isArray(images) || !prompt) {
+		return res.status(400).json({
+			error: "Πρέπει να στείλετε μια λίστα εικόνων (images array) και ένα prompt."
+		});
+	}
+
+	const chat = ai.chats.create({
+		model: CHAT_MODEL,
+		history: history || [],
+		config: {
+			systemInstruction: SYSTEM_INSTRUCTION,
+			tools: [{ googleSearch: {} }],
+			safetySettings: 
+			[
+				{
+					category: HARM_CATEGORY_SEXUALLY_EXPLICIT,
+					threshold: HarmCategory.BLOCK_NONE,
+				},
+			]
+		},
+	});
+
+	try {
+		// Μετατρέπουμε κάθε base64 string της λίστας σε αντικείμενο inlineData
+		const imageParts = images.map(imgBase64 => ({
+			inlineData: {
+				data: imgBase64,
+				mimeType: mimeType || "image/jpeg"
+			}
+		}));
+
+		// Προσθέτουμε το prompt στο τέλος της λίστας των μερών
+		const messageParts = [...imageParts, prompt];
+
+		const response = await chat.sendMessage({
+			message: messageParts,
+		});
+
+		res.json({ text: response.text });
+
+	} catch (error) {
+		console.error("Gemini Multimodal Error:", error);
+		res.status(500).json({ error: "Server error." });
+	}
+});
+
+
+app.listen(PORT, () => {
+	console.log(`Server running on port ${PORT}`);
+});
