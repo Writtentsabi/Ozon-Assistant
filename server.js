@@ -64,7 +64,7 @@ app.post('/api/chat', async (req, res) => {
     history: history || [],
     config: {
       systemInstruction: SYSTEM_INSTRUCTION,
-      tools:,
+      tools: [{ googleSearch: {} }], // ΔΙΟΡΘΩΣΗ: Προσθήκη κενού πίνακα αντί για σκέτο κόμμα
       safetySettings: safety,
     },
   });
@@ -90,7 +90,7 @@ app.post('/api/multimodal-chat', async (req, res) => {
     history: history || [],
     config: {
       systemInstruction: SYSTEM_INSTRUCTION,
-      tools:,
+      tools: [{ googleSearch: {} }], // ΔΙΟΡΘΩΣΗ: Προσθήκη κενού πίνακα
       safetySettings: safety,
     },
   });
@@ -99,9 +99,7 @@ app.post('/api/multimodal-chat', async (req, res) => {
     const imageParts = images.map(imgBase64 => ({
       inlineData: { 
         data: imgBase64, 
-        mimeType: mimeType |
-
-| "image/jpeg" 
+        mimeType: mimeType || "image/jpeg" // ΔΙΟΡΘΩΣΗ: Ενοποίηση του || σε μία γραμμή
       }
     }));
     const response = await chat.sendMessage({ message: [...imageParts, prompt] });
@@ -128,9 +126,7 @@ app.post('/api/generate-image', async (req, res) => {
         contents.push({
           inlineData: {
             data: imgBase64,
-            mimeType: mimeType |
-
-| "image/jpeg"
+            mimeType: mimeType || "image/jpeg" // ΔΙΟΡΘΩΣΗ: Ενοποίηση του ||
           }
         });
       });
@@ -143,9 +139,7 @@ app.post('/api/generate-image', async (req, res) => {
         responseModalities: ['IMAGE'], 
         safetySettings: safety,
         imageConfig: {
-          aspectRatio: aspectRatio |
-
-| "1:1",
+          aspectRatio: aspectRatio || "1:1", // ΔΙΟΡΘΩΣΗ: Ενοποίηση του ||
           personGeneration: "ALLOW"
         }
       }
