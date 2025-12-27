@@ -12,7 +12,7 @@ import {
 const app = express();
 const PORT = process.env.PORT || 3000;
 const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-const IMAGE_MODEL
+const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image"
 
 // ΑΣΦΑΛΕΙΑ: Χρήση του κλειδιού από το Render Environment
 const ai = new GoogleGenAI( {
@@ -60,10 +60,10 @@ app.post('/api/chat', async (req, res) => {
 			safetySettings: 
 			[
 				{
-					category: HARM_CATEGORY_SEXUALLY_EXPLICIT,
-					threshold: HarmCategory.BLOCK_NONE,
+					category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+					threshold: HarmBlockThreshold.BLOCK_NONE,
 				},
-			]
+			],
 		},
 	});
 
@@ -104,8 +104,8 @@ app.post('/api/multimodal-chat', async (req, res) => {
 			safetySettings: 
 			[
 				{
-					category: HARM_CATEGORY_SEXUALLY_EXPLICIT,
-					threshold: HarmCategory.BLOCK_NONE,
+					category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+					threshold: HarmBlockThreshold.BLOCK_NONE,
 				},
 			]
 		},
