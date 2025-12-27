@@ -5,7 +5,7 @@ import { GoogleGenAI } from "@google/genai";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Χρήση .env με fallback στο 2.5
+// Χρήση μοντέλων από το .env
 const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash"; 
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image"; 
 
@@ -20,7 +20,7 @@ const generateImageTool = {
     parameters: {
         type: "OBJECT",
         properties: {
-            prompt: { type: "STRING", description: "The detailed prompt for the image." }
+            prompt: { type: "STRING", description: "The prompt for the image." }
         },
         required: ["prompt"],
     },
@@ -32,9 +32,8 @@ app.post('/api/chat', async (req, res) => {
     const { prompt, history, images } = req.body;
 
     try {
-        console.log("--- New Request ---");
-        console.log("Model used:", CHAT_MODEL);
-
+        console.log("--- Request Received ---");
+        
         let messageParts = [];
         if (images && Array.isArray(images)) {
             images.forEach(img => messageParts.push({ inlineData: { data: img, mimeType: "image/jpeg" } }));
@@ -46,7 +45,7 @@ app.post('/api/chat', async (req, res) => {
             parts: Array.isArray(item.parts) ? item.parts : [{ text: item.text || "" }]
         })) : [];
 
-        // 1. Κλήση στην Google
+        // Κλήση στην Google
         const result = await client.models.generateContent({
             model: CHAT_MODEL,
             contents: [...cleanHistory, { role: 'user', parts: messageParts }],
@@ -62,29 +61,23 @@ app.post('/api/chat', async (req, res) => {
             },
         });
 
-        // --- DEBUGGING BLOCK START ---
-        // Αυτό θα εμφανιστεί στα logs του Render/Termux
-        console.log("--- API RESPONSE DEBUG ---");
-        if (result.response && result.response.candidates) {
-            console.log("Candidates found:", result.response.candidates.length);
-            console.log("Response Text Snippet:", result.response.text().substring(0, 100));
-        } else {
-            console.log("NO CANDIDATES RETURNED!");
-            console.log("Full JSON Response:", JSON.stringify(result.response, null, 2));
-        }
-        // --- DEBUGGING BLOCK END ---
+        const response = result.response;
 
-        if (!result.response.candidates || result.response.candidates.length === 0) {
-            return res.json({ text: "<p>Empty response from AI. Check logs for Safety/Region block.</p>", type: "text" });
+        // 1. ΕΛΕΓΧΟΣ ΓΙΑ CANDIDATES (Πριν το response.text())
+        if (!response || !response.candidates || response.candidates.length === 0) {
+            console.error("No candidates in response. Check safety feedback.");
+            return res.json({ 
+                text: "<p>Το μοντέλο δεν επέστρεψε απάντηση (No Candidates). Δοκίμασε να αλλάξεις το μοντέλο σε 2.0-flash.</p>", 
+                type: "text" 
+            });
         }
 
-        const candidate = result.response.candidates[0];
+        const candidate = response.candidates[0];
         const call = candidate.content.parts.find(p => p.functionCall);
 
+        // 2. ΕΛΕΓΧΟΣ ΓΙΑ FUNCTION CALL (Εικόνα)
         if (call && call.functionCall.name === "generate_image") {
             const promptForImg = call.functionCall.args.prompt;
-            console.log("Executing Tool: generate_image for", promptForImg);
-
             try {
                 const imageRes = await client.models.generateImage({
                     model: IMAGE_MODEL,
@@ -93,7 +86,7 @@ app.post('/api/chat', async (req, res) => {
 
                 const b64 = imageRes.image.b64_json;
 
-                // ContentUnion Fix (Κλείσιμο session)
+                // ContentUnion Fix για να "κλείσει" το tool call
                 await client.models.generateContent({
                     model: CHAT_MODEL,
                     contents: [
@@ -105,23 +98,26 @@ app.post('/api/chat', async (req, res) => {
                 });
 
                 return res.json({
-                    text: `<p>Δημιουργήθηκε: <b>${promptForImg}</b></p>`,
+                    text: `<p>Η εικόνα δημιουργήθηκε: <b>${promptForImg}</b></p>`,
                     generated_image: b64,
                     type: "image_generated"
                 });
-
-            } catch (e) {
-                console.error("Image Tool Error:", e.message);
-                return res.json({ text: `<p>Image Error: ${e.message}</p>`, type: "text" });
+            } catch (imgErr) {
+                return res.json({ text: `<p>Σφάλμα εικόνας: ${imgErr.message}</p>`, type: "text" });
             }
         }
 
-        res.json({ text: result.response.text(), type: "text" });
+        // 3. ΧΡΗΣΗ ΤΟΥ RESPONSE.TEXT() ΜΕ ΑΣΦΑΛΕΙΑ
+        res.json({
+            text: response.text(),
+            type: "text"
+        });
 
     } catch (error) {
-        console.error("CRITICAL SERVER ERROR:", error);
+        console.error("SERVER ERROR:", error);
         res.status(500).json({ error: error.message });
     }
 });
 
-app.listen(PORT, () => console.log(`Server is active on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
+
