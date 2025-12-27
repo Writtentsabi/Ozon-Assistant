@@ -5,32 +5,56 @@ import { GoogleGenAI } from "@google/genai";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Ορισμός του API Key και αρχικοποίηση του SDK
-const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY);
+// Ορισμός του μοντέλου από το .env (με fallback αν ξεχαστεί)
+const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
 
+const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+app.use(express.json({ limit: '100mb' }));
 app.use(express.static('public'));
-app.use(express.json({ limit: '50mb' }));
 
-const SYSTEM_INSTRUCTION = `Your name is Zen, the OxyZen Browser assistant.
-- If the user provides an image, ANALYZE it based on their question.
-- If the user asks to CREATE an image, use the 'generate_image' tool.
-- Always start with <div class="thought">...</div> for reasoning.`;
+// --- TOOL DEFINITION ---
+const generateImageTool = {
+    name: "generate_image",
+    description: "Generates an image based on a text prompt. Use this ONLY when the user explicitly asks to create, generate, draw, or make an image.",
+    parameters: {
+        type: "OBJECT",
+        properties: {
+            prompt: {
+                type: "STRING",
+                description: "The detailed prompt to generate the image from."
+            },
+        },
+        required: ["prompt"],
+    },
+};
+
+// --- SYSTEM INSTRUCTION ---
+const SYSTEM_INSTRUCTION = `
+You are Zen, the OxyZen Browser assistant.
+
+FORMATTING RULES:
+1. You must ALWAYS output your response in raw HTML format.
+2. START every response with a hidden thought block exactly like this:
+   <div class="thought">
+   [Internal reasoning and analysis]
+   </div>
+3. After the thought block, write the response to the user using HTML tags (<p>, <ul>, <b>, etc).
+
+BEHAVIOR:
+- If the user provides images, ANALYZE them based on the prompt.
+- If the user asks to GENERATE or CREATE an image, call the 'generate_image' tool.
+`;
 
 app.post('/api/chat', async (req, res) => {
     const { prompt, history, images, mimeType } = req.body;
 
     try {
-        // Η ΣΩΣΤΗ ΜΕΘΟΔΟΣ: Καλούμε το getGenerativeModel από το genAI αντικείμενο
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash", // Βεβαιωθείτε ότι το όνομα είναι σωστό
-            systemInstruction: SYSTEM_INSTRUCTION 
-        });
-
         let messageParts = [];
-        
-        // Προσθήκη εικόνων αν υπάρχουν
-        if (images && Array.isArray(images)) {
-            images.forEach(base64Data => {
+
+        // Προσθήκη λίστας εικόνων
+        if (images && Array.isArray(images) && images.length > 0) {
+            images.forEach((base64Data) => {
                 messageParts.push({
                     inlineData: {
                         data: base64Data,
@@ -40,19 +64,71 @@ app.post('/api/chat', async (req, res) => {
             });
         }
 
-        // Προσθήκη του κειμένου στο τέλος
-        messageParts.push({ text: prompt });
+        // Προσθήκη κειμένου
+        if (prompt) {
+            messageParts.push({ text: prompt });
+        }
 
-        // Έναρξη Chat με το ιστορικό που έστειλε το Android
-        const chatSession = model.startChat({
+        console.log(`Using Model: ${CHAT_MODEL}`); // Log για επιβεβαίωση
+
+        const chat = client.chats.create({
+            model: CHAT_MODEL, // <--- ΕΔΩ ΧΡΗΣΙΜΟΠΟΙΕΙΤΑΙ Η ΜΕΤΑΒΛΗΤΗ ΑΠΟ ΤΟ .ENV
+            config: {
+                systemInstruction: SYSTEM_INSTRUCTION,
+                temperature: 0.7,
+                tools: [{ functionDeclarations: [generateImageTool] }],
+            },
             history: history || [],
         });
 
-        const result = await chatSession.sendMessage(messageParts);
-        const responseText = result.response.text();
+        const result = await chat.send(messageParts);
+        const functionCalls = result.functionCalls();
 
+        // --- FUNCTION CALL HANDLING ---
+        if (functionCalls && functionCalls.length > 0) {
+            const call = functionCalls[0];
+            
+            if (call.name === "generate_image") {
+                console.log("Zen generating image for:", call.args.prompt);
+
+                try {
+                    // Σημείωση: Το Imagen έχει δικό του μοντέλο, ανεξάρτητο από το Chat Model
+                    const imageResponse = await client.models.generateImage({
+                        model: "gemini-2.5-flash-image", 
+                        prompt: call.args.prompt,
+                        config: {
+                            numberOfImages: 1,
+                            aspectRatio: "1:1",
+                        }
+                    });
+
+                    const generatedImageBase64 = imageResponse.image.b64_json;
+
+                    // Manual HTML απάντηση για συνοχή
+                    const htmlResponse = `
+                        <div class="thought">User requested image generation using prompt: "${call.args.prompt}". Tool execution successful.</div>
+                        <p>Here is the image I created for you based on: <b>${call.args.prompt}</b></p>
+                    `;
+
+                    return res.json({
+                        text: htmlResponse,
+                        image: generatedImageBase64,
+                        type: "image_generated"
+                    });
+
+                } catch (imgError) {
+                    console.error("Image Gen Error:", imgError);
+                    return res.json({
+                        text: `<div class="thought">Image generation failed.</div><p style="color:red;">Error creating image.</p>`,
+                        type: "text"
+                    });
+                }
+            }
+        }
+
+        // --- STANDARD RESPONSE ---
         res.json({
-            text: responseText,
+            text: result.text,
             type: "text"
         });
 
@@ -62,4 +138,4 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => console.log(`Zen running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Zen running on port ${PORT} with model ${CHAT_MODEL}`));
