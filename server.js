@@ -1,21 +1,23 @@
 import 'dotenv/config';
 import express from 'express';
-// Χρήση του νέου SDK σύμφωνα με τις οδηγίες μετάβασης
-import { createClient } from "@google/genai";
+// Χρήση της σωστής κλάσης από το @google/genai
+import { GoogleGenAI } from "@google/genai";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Ρύθμιση Μοντέλων
+// Προσοχή: Αν το gemini-2.5 δεν είναι διαθέσιμο, χρησιμοποιήστε το gemini-2.0-flash
 const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash"; 
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.0-flash-image"; 
 
-// Αρχικοποίηση Client στο νέο SDK
-const client = createClient({ apiKey: process.env.GEMINI_API_KEY });
+// Αρχικοποίηση Client σύμφωνα με το νέο SDK
+const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 app.use(express.json({ limit: '100mb' }));
 app.use(express.static('public'));
 
+// --- TOOL DEFINITION ---
 const generateImageTool = {
     name: "generate_image",
     description: "Generates an image based on a text prompt. Use this ONLY when the user explicitly asks to create, generate, draw, or make an image.",
@@ -56,6 +58,7 @@ app.post('/api/chat', async (req, res) => {
     try {
         let messageParts = [];
 
+        // Προσθήκη εικόνων αν υπάρχουν (Multimodal)
         if (images && Array.isArray(images)) {
             images.forEach((base64Data) => {
                 if (base64Data) {
@@ -66,6 +69,7 @@ app.post('/api/chat', async (req, res) => {
             });
         }
 
+        // Προσθήκη κειμένου
         if (prompt?.trim()) {
             messageParts.push({ text: prompt });
         } else if (messageParts.length === 0) {
@@ -73,11 +77,12 @@ app.post('/api/chat', async (req, res) => {
         }
 
         const cleanHistory = sanitizeHistory(history);
+        const currentMessage = { role: 'user', parts: messageParts };
 
-        // Στο νέο SDK, το session ξεκινά απευθείας από το client.models
+        // 1. Πρώτη κλήση στο μοντέλο
         const result = await client.models.generateContent({
             model: CHAT_MODEL,
-            contents: [...cleanHistory, { role: 'user', parts: messageParts }],
+            contents: [...cleanHistory, currentMessage],
             config: {
                 systemInstruction: SYSTEM_INSTRUCTION,
                 temperature: 0.7,
@@ -86,6 +91,7 @@ app.post('/api/chat', async (req, res) => {
         });
 
         const response = result.response;
+        // Έλεγχος για Function Call (παραγωγή εικόνας)
         const call = response.candidates[0].content.parts.find(p => p.functionCall);
 
         if (call && call.functionCall.name === "generate_image") {
@@ -93,7 +99,7 @@ app.post('/api/chat', async (req, res) => {
             console.log(`Generating image for:`, promptForImage);
 
             try {
-                // Παραγωγή εικόνας με το νέο SDK
+                // 2. Παραγωγή εικόνας με το μοντέλο Imagen
                 const imageResponse = await client.models.generateImage({
                     model: IMAGE_MODEL,
                     prompt: promptForImage,
@@ -102,14 +108,14 @@ app.post('/api/chat', async (req, res) => {
 
                 const generatedImageBase64 = imageResponse.image.b64_json;
 
-                // ΚΡΙΣΙΜΟ: Αποστολή Tool Response για αποφυγή ContentUnion error
-                // Στο νέο SDK, στέλνουμε το αποτέλεσμα της συνάρτησης για να "κλείσει" η συναλλαγή
-                const finalResult = await client.models.generateContent({
+                // 3. Η ΔΙΟΡΘΩΣΗ ΓΙΑ ΤΟ CONTENTUNION:
+                // Πρέπει να στείλουμε το functionResponse πίσω στο session
+                await client.models.generateContent({
                     model: CHAT_MODEL,
                     contents: [
                         ...cleanHistory,
-                        { role: 'user', parts: messageParts },
-                        response.candidates[0].content, // Το function call του μοντέλου
+                        currentMessage,
+                        response.candidates[0].content, // Το αρχικό call του AI
                         {
                             role: 'tool',
                             parts: [{
@@ -122,24 +128,25 @@ app.post('/api/chat', async (req, res) => {
                     ]
                 });
 
-                const htmlResponse = `<div class="thought">Generated image using ${IMAGE_MODEL}.</div><p>Ορίστε η εικόνα για: <b>${promptForImage}</b></p>`;
+                const htmlResponse = `<div class="thought">Image generated successfully.</div><p>Ορίστε η εικόνα που ζητήσατε για: <b>${promptForImage}</b></p>`;
 
+                // Επιστροφή στον Android client
                 return res.json({
                     text: htmlResponse,
-                    generated_image: generatedImageBase64,
+                    generated_image: generatedImageBase64, // Συγχρονισμένο με AssistantActivity.java
                     type: "image_generated"
                 });
 
             } catch (imgError) {
                 console.error("Image Gen Error:", imgError);
                 return res.json({
-                    text: `<div class="thought">Error generating image.</div><p style="color:red;">Error: ${imgError.message}</p>`,
+                    text: `<div class="thought">Failed to generate image.</div><p style="color:red;">Σφάλμα κατά την παραγωγή: ${imgError.message}</p>`,
                     type: "text"
                 });
             }
         }
 
-        // Κανονική απάντηση κειμένου
+        // 4. Κανονική απάντηση κειμένου αν δεν κλήθηκε εργαλείο
         res.json({
             text: response.text(),
             type: "text"
