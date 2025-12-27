@@ -5,9 +5,9 @@ import { GoogleGenAI } from "@google/genai";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Χρησιμοποιήστε gemini-2.0-flash που είναι το πιο σταθερό αυτή τη στιγμή
-const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash"; 
-const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.0-flash-image"; 
+// Χρήση .env με fallback στο 2.5
+const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash"; 
+const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image"; 
 
 const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -20,18 +20,21 @@ const generateImageTool = {
     parameters: {
         type: "OBJECT",
         properties: {
-            prompt: { type: "STRING", description: "Detailed prompt" },
+            prompt: { type: "STRING", description: "The detailed prompt for the image." }
         },
         required: ["prompt"],
     },
 };
 
-const SYSTEM_INSTRUCTION = `You are Zen. ALWAYS output HTML. If asked for an image, use generate_image.`;
+const SYSTEM_INSTRUCTION = `You are Zen. Output ALWAYS in HTML. If asked for an image, call 'generate_image'.`;
 
 app.post('/api/chat', async (req, res) => {
     const { prompt, history, images } = req.body;
 
     try {
+        console.log("--- New Request ---");
+        console.log("Model used:", CHAT_MODEL);
+
         let messageParts = [];
         if (images && Array.isArray(images)) {
             images.forEach(img => messageParts.push({ inlineData: { data: img, mimeType: "image/jpeg" } }));
@@ -43,76 +46,82 @@ app.post('/api/chat', async (req, res) => {
             parts: Array.isArray(item.parts) ? item.parts : [{ text: item.text || "" }]
         })) : [];
 
-        const currentMessage = { role: 'user', parts: messageParts };
-
-        // Κλήση στο μοντέλο
+        // 1. Κλήση στην Google
         const result = await client.models.generateContent({
             model: CHAT_MODEL,
-            contents: [...cleanHistory, currentMessage],
+            contents: [...cleanHistory, { role: 'user', parts: messageParts }],
             config: {
                 systemInstruction: SYSTEM_INSTRUCTION,
                 tools: [{ functionDeclarations: [generateImageTool] }],
+                safetySettings: [
+                    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+                ]
             },
         });
 
-        // --- ΑΣΦΑΛΗΣ ΕΛΕΓΧΟΣ ΓΙΑ ΤΟ ΣΦΑΛΜΑ CANDIDATES ---
-        if (!result.response || !result.response.candidates || result.response.candidates.length === 0) {
-            throw new Error("Empty response from AI model. Check your API Key or Model name.");
+        // --- DEBUGGING BLOCK START ---
+        // Αυτό θα εμφανιστεί στα logs του Render/Termux
+        console.log("--- API RESPONSE DEBUG ---");
+        if (result.response && result.response.candidates) {
+            console.log("Candidates found:", result.response.candidates.length);
+            console.log("Response Text Snippet:", result.response.text().substring(0, 100));
+        } else {
+            console.log("NO CANDIDATES RETURNED!");
+            console.log("Full JSON Response:", JSON.stringify(result.response, null, 2));
+        }
+        // --- DEBUGGING BLOCK END ---
+
+        if (!result.response.candidates || result.response.candidates.length === 0) {
+            return res.json({ text: "<p>Empty response from AI. Check logs for Safety/Region block.</p>", type: "text" });
         }
 
         const candidate = result.response.candidates[0];
         const call = candidate.content.parts.find(p => p.functionCall);
 
         if (call && call.functionCall.name === "generate_image") {
-            const promptForImage = call.functionCall.args.prompt;
-            
+            const promptForImg = call.functionCall.args.prompt;
+            console.log("Executing Tool: generate_image for", promptForImg);
+
             try {
-                const imageResponse = await client.models.generateImage({
+                const imageRes = await client.models.generateImage({
                     model: IMAGE_MODEL,
-                    prompt: promptForImage,
+                    prompt: promptForImg,
                 });
 
-                const generatedImageBase64 = imageResponse.image.b64_json;
+                const b64 = imageRes.image.b64_json;
 
-                // Κλείσιμο του Function Call (ContentUnion fix)
+                // ContentUnion Fix (Κλείσιμο session)
                 await client.models.generateContent({
                     model: CHAT_MODEL,
                     contents: [
                         ...cleanHistory,
-                        currentMessage,
+                        { role: 'user', parts: messageParts },
                         candidate.content,
-                        {
-                            role: 'tool',
-                            parts: [{
-                                functionResponse: {
-                                    name: "generate_image",
-                                    response: { success: true }
-                                }
-                            }]
-                        }
+                        { role: 'tool', parts: [{ functionResponse: { name: "generate_image", response: { success: true } } }] }
                     ]
                 });
 
                 return res.json({
-                    text: `<p>Η εικόνα δημιουργήθηκε για: <b>${promptForImage}</b></p>`,
-                    generated_image: generatedImageBase64,
+                    text: `<p>Δημιουργήθηκε: <b>${promptForImg}</b></p>`,
+                    generated_image: b64,
                     type: "image_generated"
                 });
 
-            } catch (imgErr) {
-                return res.json({ text: `<p>Σφάλμα εικόνας: ${imgErr.message}</p>`, type: "text" });
+            } catch (e) {
+                console.error("Image Tool Error:", e.message);
+                return res.json({ text: `<p>Image Error: ${e.message}</p>`, type: "text" });
             }
         }
 
-        res.json({
-            text: candidate.content.parts[0].text || "No response",
-            type: "text"
-        });
+        res.json({ text: result.response.text(), type: "text" });
 
     } catch (error) {
-        console.error("SERVER ERROR:", error);
+        console.error("CRITICAL SERVER ERROR:", error);
         res.status(500).json({ error: error.message });
     }
 });
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server is active on port ${PORT}`));
