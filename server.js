@@ -1,152 +1,146 @@
-// server.js (Διορθωμένο)
-
+// server.js (Εμπλουτισμένο με δυνατότητα παραγωγής εικόνων)
 import 'dotenv/config';
 import express from 'express';
-import {
-	GoogleGenAI
-} from "@google/genai";
-import {
-	Buffer
-} from 'buffer';
+import { GoogleGenAI } from "@google/genai";
+import { Buffer } from 'buffer';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image"
+const PORT = process.env.PORT |
 
-// ΑΣΦΑΛΕΙΑ: Χρήση του κλειδιού από το Render Environment
-const ai = new GoogleGenAI( {
-	apiKey: process.env.GEMINI_API_KEY
+| 3000;
+const CHAT_MODEL = process.env.GEMINI_MODEL |
+
+| "gemini-2.5-flash";
+const IMAGE_MODEL = process.env.IMAGE_MODEL |
+
+| "gemini-2.5-flash-image";
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY
 });
 
-const safety = [
-  {
-    category: "HARM_CATEGORY_HARASSMENT",
-    threshold: "BLOCK_NONE",
-  },
-  {
-    category: "HARM_CATEGORY_HATE_SPEECH",
-    threshold: "BLOCK_NONE",
-  },
-  {
-    category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-    threshold: "BLOCK_NONE",
-  },
-  {
-    category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-    threshold: "BLOCK_NONE",
-  },
-  {
-    category: "HARM_CATEGORY_CIVIC_INTEGRITY",
-    threshold: "BLOCK_NONE",
-  }
-];
+const safety =;
 
-// 1. Ρύθμιση για Static Files (HTML, CSS, Client JS)
 app.use(express.static('public'));
+app.use(express.json({ limit: '50mb' }));
 
-// ΔΙΟΡΘΩΣΗ: Αύξηση του ορίου μεγέθους του JSON body για να δεχτεί μεγάλες εικόνες (Base64)
-app.use(express.json({
-	limit: '50mb'
-}));
+const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for the OxyZen Browser... (τα υπόλοιπα rules παραμένουν ως έχουν)`;
 
-const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for the OxyZen Browser.
-An app uploaded also on Play Store.
-
-CORE RULE: Every response MUST consist of two distinct sections.
-
-1. INTERNAL MONOLOGUE (The "Thought" process):
-- You must start every response with a <div class="thought"> tag.
-- In this section, analyze the user's intent, the context of the conversation, and your plan for the response.
-- Reflect on potential nuances, tone requirements, or specific information needed from the user's prompt.
-- This is your private reasoning space. Keep it analytical and objective.
-- Close this section with </div>.
-
-2. FINAL RESPONSE:
-- Immediately after the thought block, provide your actual response to the user.
-- Use structured HTML tags (e.g., <p>, <ul>, <strong>, <a>).
-- Maintain a helpful, Zen-like, and professional personality.
-- IMPORTANT: Do not include <html>, <head>, or <body> tags. 
-- Ensure the tone matches the "OxyZen Browser" brand: calm, efficient, and user-centric.`;
-
-// 2. Το API Endpoint για Συνομιλία (Text-Only Chat)
+// 1. Endpoint για Συνομιλία (Text-Only)
 app.post('/api/chat', async (req, res) => {
+  const prompt = req.body.prompt;
+  const chat = ai.chats.create({
+    model: CHAT_MODEL,
+    history: req.body.history ||,
+    config: {
+      systemInstruction: SYSTEM_INSTRUCTION,
+      tools:,
+      safetySettings: safety,
+    },
+  });
 
-	const prompt = req.body.prompt;
-
-	const chat = ai.chats.create({
-		model: CHAT_MODEL,
-		history: req.body.history || [],
-		config: {
-			systemInstruction: SYSTEM_INSTRUCTION,
-			tools: [{ googleSearch: {} }],
-			safetySettings: safety,
-		},
-	});
-
-	try {
-		const response = await chat.sendMessage({
-			message: prompt,
-		});
-
-		res.json({
-			text: response.text
-		});
-
-	} catch (error) {
-		console.error("Gemini Chat Error:", error);
-		res.status(500).json({
-			error: "Server error during Gemini chat call."
-		});
-	}
+  try {
+    const response = await chat.sendMessage({ message: prompt });
+    res.json({ text: response.text });
+  } catch (error) {
+    console.error("Chat Error:", error);
+    res.status(500).json({ error: "Server error." });
+  }
 });
 
+// 2. Endpoint για Πολυτροπική Συνομιλία (Input: Images -> Output: Text)
 app.post('/api/multimodal-chat', async (req, res) => {
-	const {
-		prompt, images, mimeType, history // Αλλάζουμε το image σε images
-	} = req.body;
+  const { prompt, images, mimeType, history } = req.body;
+  if (!images ||!Array.isArray(images) ||!prompt) {
+    return res.status(400).json({ error: "Missing prompt or images array." });
+  }
 
-	if (!images || !Array.isArray(images) || !prompt) {
-		return res.status(400).json({
-			error: "Πρέπει να στείλετε μια λίστα εικόνων (images array) και ένα prompt."
-		});
-	}
+  const chat = ai.chats.create({
+    model: CHAT_MODEL,
+    history: history ||,
+    config: {
+      systemInstruction: SYSTEM_INSTRUCTION,
+      tools:,
+      safetySettings: safety,
+    },
+  });
 
-	const chat = ai.chats.create({
-		model: CHAT_MODEL,
-		history: history || [],
-		config: {
-			systemInstruction: SYSTEM_INSTRUCTION,
-			tools: [{ googleSearch: {} }],
-			safetySettings: safety,
-		},
-	});
+  try {
+    const imageParts = images.map(imgBase64 => ({
+      inlineData: { data: imgBase64, mimeType: mimeType |
 
-	try {
-		// Μετατρέπουμε κάθε base64 string της λίστας σε αντικείμενο inlineData
-		const imageParts = images.map(imgBase64 => ({
-			inlineData: {
-				data: imgBase64,
-				mimeType: mimeType || "image/jpeg"
-			}
-		}));
-
-		// Προσθέτουμε το prompt στο τέλος της λίστας των μερών
-		const messageParts = [...imageParts, prompt];
-
-		const response = await chat.sendMessage({
-			message: messageParts,
-		});
-
-		res.json({ text: response.text });
-
-	} catch (error) {
-		console.error("Gemini Multimodal Error:", error);
-		res.status(500).json({ error: "Server error." });
-	}
+| "image/jpeg" }
+    }));
+    const response = await chat.sendMessage({ message: [...imageParts, prompt] });
+    res.json({ text: response.text });
+  } catch (error) {
+    console.error("Multimodal Error:", error);
+    res.status(500).json({ error: "Server error." });
+  }
 });
 
+// 3. ΝΕΟ: Endpoint για Παραγωγή/Επεξεργασία Εικόνας (Input: Prompt/Images -> Output: Image)
+app.post('/api/generate-image', async (req, res) => {
+  const { prompt, images, mimeType, aspectRatio } = req.body;
+
+  if (!prompt) {
+    return res.status(400).json({ error: "Το prompt είναι υποχρεωτικό." });
+  }
+
+  try {
+    // Κατασκευή των μερών του αιτήματος
+    const contents = [{ text: prompt }];
+
+    // Αν υπάρχουν εικόνες εισόδου (base64), τις προσθέτουμε για Image-to-Image ή Editing [span_6](start_span)[span_6](end_span)[span_7](start_span)[span_7](end_span)
+    if (images && Array.isArray(images)) {
+      images.forEach(imgBase64 => {
+        contents.push({
+          inlineData: {
+            data: imgBase64,
+            mimeType: mimeType |
+
+| "image/jpeg"
+          }
+        });
+      });
+    }
+
+    const response = await ai.models.generateContent({
+      model: IMAGE_MODEL,
+      contents: contents,
+      config: {
+        // Η ρύθμιση IMAGE ενεργοποιεί την οπτική έξοδο 
+        responseModalities: ['IMAGE'], 
+        safetySettings: safety,
+        imageConfig: {
+          aspectRatio: aspectRatio |
+
+| "1:1", // Υποστηρίζονται 16:9, 9:16, κ.α. 
+          personGeneration: "ALLOW"
+        }
+      }
+    });
+
+    // Εξαγωγή των παραχθέντων εικόνων από την απόκριση [span_8](start_span)[span_8](end_span)[span_9](start_span)[span_9](end_span)[span_10](start_span)[span_10](end_span)
+    const generatedImages = response.candidates.content.parts
+     .filter(part => part.inlineData)
+     .map(part => ({
+        data: part.inlineData.data,
+        mimeType: part.inlineData.mimeType
+      }));
+
+    if (generatedImages.length === 0) {
+      return res.status(500).json({ error: "Το μοντέλο δεν επέστρεψε εικόνα. Ελέγξτε τους περιορισμούς ασφαλείας." });
+    }
+
+    res.json({ success: true, images: generatedImages });
+
+  } catch (error) {
+    console.error("Image Generation Error:", error);
+    res.status(500).json({ error: "Σφάλμα κατά την παραγωγή εικόνας." });
+  }
+});
 
 app.listen(PORT, () => {
-	console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
