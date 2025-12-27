@@ -62,17 +62,7 @@ app.post('/api/chat', async (req, res) => {
         });
 
         const response = result.response;
-
-        // 1. ΕΛΕΓΧΟΣ ΓΙΑ CANDIDATES (Πριν το response.text())
-        if (!response || !response.candidates || response.candidates.length === 0) {
-            console.error("No candidates in response. Check safety feedback.");
-            return res.json({ 
-                text: "<p>Το μοντέλο δεν επέστρεψε απάντηση (No Candidates). Δοκίμασε να αλλάξεις το μοντέλο σε 2.0-flash.</p>", 
-                type: "text" 
-            });
-        }
-
-        const candidate = response.candidates[0];
+        const candidate = response.text;
         const call = candidate.content.parts.find(p => p.functionCall);
 
         // 2. ΕΛΕΓΧΟΣ ΓΙΑ FUNCTION CALL (Εικόνα)
