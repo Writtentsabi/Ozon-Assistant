@@ -118,6 +118,53 @@ app.post('/api/multimodal-chat', async (req, res) => {
 	}
 });
 
+// 4. ΝΕΟ API ENDPOINT ΓΙΑ ΠΑΡΑΓΩΓΗ ΕΙΚΟΝΑΣ (Image Generation)
+app.post('/api/generate-image', async (req, res) => {
+    const { prompt, aspect_ratio = "1:1" } = req.body;
+
+    if (!prompt) {
+        return res.status(400).json({
+            error: "Prompt is required for image generation."
+        });
+    }
+
+    // Χρησιμοποιούμε το εξειδικευμένο μοντέλο για εικόνες
+    const imageModel = "gemini-2.5-flash-image";
+
+    try {
+        const result = await ai.models.generateContent({
+            model: imageModel,
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            config: {
+                // Ενημερώνουμε το μοντέλο ότι περιμένουμε εικόνα
+                responseModalities: ["IMAGE"],
+                imageConfig: {
+                    aspectRatio: aspect_ratio, // π.χ. "1:1", "16:9", "4:3"
+                    numberOfImages: 1
+                }
+            }
+        });
+
+        // Το μοντέλο επιστρέφει την εικόνα σε Base64 μέσα στα parts
+        const imagePart = result.response.candidates[0].content.parts.find(p => p.inlineData);
+
+        if (imagePart) {
+            res.json({
+                image: imagePart.inlineData.data, // Το base64 string
+                mimeType: imagePart.inlineData.mimeType
+            });
+        } else {
+            throw new Error("No image was generated in the response.");
+        }
+
+    } catch (error) {
+        console.error("Gemini Image Generation Error:", error);
+        res.status(500).json({
+            error: "Failed to generate image. " + error.message
+        });
+    }
+});
+
 
 app.listen(PORT, () => {
 	console.log(`Server running on port ${PORT}`);
