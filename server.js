@@ -121,7 +121,6 @@ app.post('/api/generate-image', async (req, res) => {
   try {
     const contents = [{ text: prompt }];
 
-    // Προσθήκη εικόνων αναφοράς αν υπάρχουν [1, 4, 5]
     if (images && Array.isArray(images)) {
       images.forEach(imgBase64 => {
         contents.push({
@@ -146,23 +145,18 @@ app.post('/api/generate-image', async (req, res) => {
       }
     });
 
-    // Ασφαλής έλεγχος της απάντησης (Robust Response Parsing) [3, 6, 7]
-    const candidate = response.candidates?.;
+    // ΔΙΟΡΘΩΣΗ ΣΦΑΛΜΑΤΟΣ: Αφαίρεση του ?. πριν το ; και ενοποίηση των ||
+    const candidate = response.candidates ? response.candidates[0] : null;
     const parts = candidate?.content?.parts;
 
     if (!parts || parts.length === 0) {
-        const reason = candidate?.finishReason |
-
-| "UNKNOWN";
-        const safetyFeedback = response.promptFeedback?.blockReason |
-
-| "";
+        const reason = candidate?.finishReason || "UNKNOWN";
+        const safetyFeedback = response.promptFeedback?.blockReason || "";
         return res.status(500).json({ 
             error: `Το μοντέλο δεν επέστρεψε εικόνα. Αιτία: ${reason}. ${safetyFeedback}` 
         });
     }
 
-    // Φιλτράρισμα των μερών που περιέχουν inlineData (εικόνες base64) [1, 8]
     const generatedImages = parts
     .filter(part => part.inlineData)
     .map(part => ({
