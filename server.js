@@ -19,6 +19,13 @@ const ai = new GoogleGenAI( {
 	apiKey: process.env.GEMINI_API_KEY
 });
 
+const safety = [
+  {
+    category: "HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT",
+    threshold: "HarmBlockThreshold.BLOCK_NONE",
+  }
+];
+
 // 1. Ρύθμιση για Static Files (HTML, CSS, Client JS)
 app.use(express.static('public'));
 
@@ -57,13 +64,7 @@ app.post('/api/chat', async (req, res) => {
 		config: {
 			systemInstruction: SYSTEM_INSTRUCTION,
 			tools: [{ googleSearch: {} }],
-			safetySettings: 
-			[
-				{
-					category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-					threshold: HarmBlockThreshold.BLOCK_NONE,
-				},
-			],
+			safetySettings: safety,
 		},
 	});
 
@@ -101,13 +102,7 @@ app.post('/api/multimodal-chat', async (req, res) => {
 		config: {
 			systemInstruction: SYSTEM_INSTRUCTION,
 			tools: [{ googleSearch: {} }],
-			safetySettings: 
-			[
-				{
-					category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-					threshold: HarmBlockThreshold.BLOCK_NONE,
-				},
-			]
+			safetySettings: safety,
 		},
 	});
 
