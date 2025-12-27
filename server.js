@@ -22,7 +22,7 @@ const ai = new GoogleGenAI( {
 const safety = [
   {
     category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-    threshold: "BLOCK_NONE",
+    threshold: "OFF",
   }
 ];
 
