@@ -138,7 +138,6 @@ app.post('/api/generate-image', async (req, res) => {
       contents: contents,
       config: {
 	systemInstruction: SYSTEM_INSTRUCTION,
-	tools: [{ googleSearch: {} }],
         responseModalities: ['IMAGE'], 
         safetySettings: safety,
         imageConfig: {
