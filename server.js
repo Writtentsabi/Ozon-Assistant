@@ -64,7 +64,7 @@ app.post('/api/chat', async (req, res) => {
     history: history || [],
     config: {
       systemInstruction: SYSTEM_INSTRUCTION,
-      tools: [{ googleSearch: {} }], // ΔΙΟΡΘΩΣΗ: Προσθήκη κενού πίνακα αντί για σκέτο κόμμα
+      tools: [{ googleSearch: {} }], 
       safetySettings: safety,
     },
   });
@@ -90,7 +90,7 @@ app.post('/api/multimodal-chat', async (req, res) => {
     history: history || [],
     config: {
       systemInstruction: SYSTEM_INSTRUCTION,
-      tools: [{ googleSearch: {} }], // ΔΙΟΡΘΩΣΗ: Προσθήκη κενού πίνακα
+      tools: [{ googleSearch: {} }], 
       safetySettings: safety,
     },
   });
@@ -99,7 +99,7 @@ app.post('/api/multimodal-chat', async (req, res) => {
     const imageParts = images.map(imgBase64 => ({
       inlineData: { 
         data: imgBase64, 
-        mimeType: mimeType || "image/jpeg" // ΔΙΟΡΘΩΣΗ: Ενοποίηση του || σε μία γραμμή
+        mimeType: mimeType || "image/jpeg" 
       }
     }));
     const response = await chat.sendMessage({ message: [...imageParts, prompt] });
@@ -126,9 +126,7 @@ app.post('/api/generate-image', async (req, res) => {
         contents.push({
           inlineData: {
             data: imgBase64,
-            mimeType: mimeType |
-
-| "image/jpeg"
+            mimeType: mimeType || "image/jpeg"
           }
         });
       });
@@ -141,18 +139,13 @@ app.post('/api/generate-image', async (req, res) => {
         responseModalities: ['IMAGE'], 
         safetySettings: safety,
         imageConfig: {
-          aspectRatio: aspectRatio |
-
-| "1:1",
+          aspectRatio: aspectRatio || "1:1",
           personGeneration: "ALLOW"
         }
       }
     });
 
-    // ΔΙΟΡΘΩΣΗ: Προσθήκη του  στο candidates [1, 2]
-    if (!response.candidates |
-
-| response.candidates.length === 0) {
+    if (!response.candidates || response.candidates.length === 0) {
         return res.status(500).json({ error: "Δεν παρήχθη αποτέλεσμα από το μοντέλο." });
     }
 
@@ -164,7 +157,6 @@ app.post('/api/generate-image', async (req, res) => {
     }));
 
     if (generatedImages.length === 0) {
-      // Έλεγχος αν η παραγωγή σταμάτησε λόγω ασφαλείας [3]
       const finishReason = response.candidates.finishReason;
       return res.status(500).json({ 
         error: finishReason === 'SAFETY'? "Η εικόνα μπλοκαρίστηκε από τα φίλτρα ασφαλείας." : "Το μοντέλο δεν επέστρεψε εικόνα." 
