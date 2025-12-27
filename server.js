@@ -5,15 +5,9 @@ import { GoogleGenAI } from "@google/genai";
 import { Buffer } from 'buffer';
 
 const app = express();
-const PORT = process.env.PORT |
-
-| 3000;
-const CHAT_MODEL = process.env.GEMINI_MODEL |
-
-| "gemini-2.5-flash";
-const IMAGE_MODEL = process.env.IMAGE_MODEL |
-
-| "gemini-2.5-flash-image";
+const PORT = process.env.PORT || 3000;
+const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY
