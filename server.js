@@ -1,171 +1,127 @@
-// server.js (Διορθωμένο)
-
 import 'dotenv/config';
 import express from 'express';
-import {
-	GoogleGenAI
-} from "@google/genai";
-import {
-	Buffer
-} from 'buffer';
+import { GoogleGenAI } from "@google/genai";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
-// ΑΣΦΑΛΕΙΑ: Χρήση του κλειδιού από το Render Environment
-const ai = new GoogleGenAI( {
-	apiKey: process.env.GEMINI_API_KEY
+const ai = new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY
 });
 
-// 1. Ρύθμιση για Static Files (HTML, CSS, Client JS)
 app.use(express.static('public'));
-
-// ΔΙΟΡΘΩΣΗ: Αύξηση του ορίου μεγέθους του JSON body για να δεχτεί μεγάλες εικόνες (Base64)
-app.use(express.json({
-	limit: '50mb'
-}));
+app.use(express.json({ limit: '50mb' }));
 
 const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for the OxyZen Browser.
-An app uploaded also on Play Store.
+CORE RULE: Every response MUST start with <div class="thought">...</div> for your reasoning, followed by your structured HTML response.
+Maintain a calm, professional, and Zen-like personality.`;
 
-CORE RULE: Every response MUST consist of two distinct sections.
-
-1. INTERNAL MONOLOGUE (The "Thought" process):
-- You must start every response with a <div class="thought"> tag.
-- In this section, analyze the user's intent, the context of the conversation, and your plan for the response.
-- Reflect on potential nuances, tone requirements, or specific information needed from the user's prompt.
-- This is your private reasoning space. Keep it analytical and objective.
-- Close this section with </div>.
-
-2. FINAL RESPONSE:
-- Immediately after the thought block, provide your actual response to the user.
-- Use structured HTML tags (e.g., <p>, <ul>, <strong>, <a>).
-- Maintain a helpful, Zen-like, and professional personality.
-- IMPORTANT: Do not include <html>, <head>, or <body> tags. 
-- Ensure the tone matches the "OxyZen Browser" brand: calm, efficient, and user-centric.`;
-
-// 2. Το API Endpoint για Συνομιλία (Text-Only Chat)
-app.post('/api/chat', async (req, res) => {
-
-	const prompt = req.body.prompt;
-
-	const chat = ai.chats.create({
-		model: MODEL_NAME,
-		history: req.body.history || [],
-		config: {
-			systemInstruction: SYSTEM_INSTRUCTION,
-		},
-	});
-
-	try {
-		const response = await chat.sendMessage({
-			message: prompt,
-		});
-
-		res.json({
-			text: response.text
-		});
-
-	} catch (error) {
-		console.error("Gemini Chat Error:", error);
-		res.status(500).json({
-			error: "Server error during Gemini chat call."
-		});
-	}
-});
-
-app.post('/api/multimodal-chat', async (req, res) => {
-	const {
-		prompt, images, mimeType, history // Αλλάζουμε το image σε images
-	} = req.body;
-
-	if (!images || !Array.isArray(images) || !prompt) {
-		return res.status(400).json({
-			error: "Πρέπει να στείλετε μια λίστα εικόνων (images array) και ένα prompt."
-		});
-	}
-
-	const chat = ai.chats.create({
-		model: MODEL_NAME,
-		history: history || [],
-		config: {
-			systemInstruction: SYSTEM_INSTRUCTION,
-		},
-	});
-
-	try {
-		// Μετατρέπουμε κάθε base64 string της λίστας σε αντικείμενο inlineData
-		const imageParts = images.map(imgBase64 => ({
-			inlineData: {
-				data: imgBase64,
-				mimeType: mimeType || "image/jpeg"
-			}
-		}));
-
-		// Προσθέτουμε το prompt στο τέλος της λίστας των μερών
-		const messageParts = [...imageParts, prompt];
-
-		const response = await chat.sendMessage({
-			message: messageParts,
-		});
-
-		res.json({ text: response.text });
-
-	} catch (error) {
-		console.error("Gemini Multimodal Error:", error);
-		res.status(500).json({ error: "Server error." });
-	}
-});
-
-// 4. ΝΕΟ API ENDPOINT ΓΙΑ ΠΑΡΑΓΩΓΗ ΕΙΚΟΝΑΣ (Image Generation)
-app.post('/api/generate-image', async (req, res) => {
-    const { prompt, aspect_ratio = "1:1" } = req.body;
-
-    if (!prompt) {
-        return res.status(400).json({
-            error: "Prompt is required for image generation."
-        });
-    }
-
-    // Χρησιμοποιούμε το εξειδικευμένο μοντέλο για εικόνες
-    const imageModel = "gemini-2.5-flash-image";
-
-    try {
-        const result = await ai.models.generateContent({
-            model: imageModel,
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            config: {
-                // Ενημερώνουμε το μοντέλο ότι περιμένουμε εικόνα
-                responseModalities: ["IMAGE"],
-                imageConfig: {
-                    aspectRatio: aspect_ratio, // π.χ. "1:1", "16:9", "4:3"
-                    numberOfImages: 1
+// Ορισμός του Εργαλείου για Παραγωγή Εικόνας
+const tools = [
+    {
+        functionDeclarations: [
+            {
+                name: "generate_image",
+                description: "Creates an image based on user description. Use this only when the user explicitly asks to create, draw, or generate an image.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: {
+                        prompt: {
+                            type: "STRING",
+                            description: "A detailed English description of the image to be generated."
+                        },
+                        aspect_ratio: {
+                            type: "STRING",
+                            description: "The aspect ratio of the image.",
+                            enum: ["1:1", "16:9", "4:3", "9:16"]
+                        }
+                    },
+                    required: ["prompt"]
                 }
             }
-        });
+        ]
+    }
+];
 
-        // Το μοντέλο επιστρέφει την εικόνα σε Base64 μέσα στα parts
-        const imagePart = result.response.candidates[0].content.parts.find(p => p.inlineData);
+// 1. Το Κύριο Endpoint (Chat + Intelligent Image Generation)
+app.post('/api/chat', async (req, res) => {
+    const { prompt, history } = req.body;
 
-        if (imagePart) {
-            res.json({
-                image: imagePart.inlineData.data, // Το base64 string
-                mimeType: imagePart.inlineData.mimeType
+    const chat = ai.chats.create({
+        model: MODEL_NAME,
+        history: history || [],
+        config: {
+            systemInstruction: SYSTEM_INSTRUCTION,
+            tools: tools, // Εδώ δίνουμε τη δυνατότητα στον Zen να "βλέπει" τη συνάρτηση
+        },
+    });
+
+    try {
+        const result = await chat.sendMessage({ message: prompt });
+        const responseContent = result.response.candidates[0].content;
+        
+        // Έλεγχος αν το Gemini ζήτησε Function Call (δηλ. παραγωγή εικόνας)
+        const call = responseContent.parts.find(p => p.functionCall);
+
+        if (call && call.functionCall.name === "generate_image") {
+            const { prompt: imgPrompt, aspect_ratio } = call.functionCall.args;
+            
+            console.log("Zen is generating an image for:", imgPrompt);
+
+            // Κλήση του εξειδικευμένου Flash Image μοντέλου
+            const imgResult = await ai.models.generateContent({
+                model: "gemini-2.5-flash-image",
+                contents: [{ role: "user", parts: [{ text: imgPrompt }] }],
+                config: {
+                    responseModalities: ["IMAGE"],
+                    imageConfig: { aspectRatio: aspect_ratio || "1:1" }
+                }
             });
-        } else {
-            throw new Error("No image was generated in the response.");
+
+            const imagePart = imgResult.response.candidates[0].content.parts.find(p => p.inlineData);
+            
+            return res.json({
+                text: `<div class="thought">The user wants an image. I have invoked the generation tool.</div>
+                       <p>Βεβαίως. Δημιούργησα την εικόνα που ζητήσατε βασισμένος στην περιγραφή: <em>${imgPrompt}</em></p>`,
+                image: imagePart.inlineData.data,
+                type: "image_generation"
+            });
         }
 
-    } catch (error) {
-        console.error("Gemini Image Generation Error:", error);
-        res.status(500).json({
-            error: "Failed to generate image. " + error.message
+        // Απλή απάντηση κειμένου αν δεν χρειάζεται εικόνα
+        res.json({
+            text: result.response.text(),
+            type: "text"
         });
+
+    } catch (error) {
+        console.error("Gemini Error:", error);
+        res.status(500).json({ error: "Internal Server Error" });
     }
 });
 
+// 2. Multimodal Endpoint (Ανάλυση εικόνας που ανεβάζει ο χρήστης)
+app.post('/api/multimodal-chat', async (req, res) => {
+    const { prompt, image, mimeType, history } = req.body;
+
+    const chat = ai.chats.create({
+        model: MODEL_NAME,
+        history: history || [],
+        config: { systemInstruction: SYSTEM_INSTRUCTION },
+    });
+
+    const imagePart = { inlineData: { data: image, mimeType: mimeType } };
+
+    try {
+        const result = await chat.sendMessage({ message: [imagePart, prompt] });
+        res.json({ text: result.response.text() });
+    } catch (error) {
+        console.error("Multimodal Error:", error);
+        res.status(500).json({ error: "Error processing image analysis." });
+    }
+});
 
 app.listen(PORT, () => {
-	console.log(`Server running on port ${PORT}`);
+    console.log(`Zen Server running on port ${PORT}`);
 });
