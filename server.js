@@ -1,20 +1,21 @@
 import 'dotenv/config';
 import express from 'express';
-import { GoogleGenAI } from "@google/genai";
+// Χρήση του νέου SDK σύμφωνα με τις οδηγίες μετάβασης
+import { createClient } from "@google/genai";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Μοντέλα
+// Ρύθμιση Μοντέλων
 const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash"; 
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.0-flash-image"; 
 
-const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Αρχικοποίηση Client στο νέο SDK
+const client = createClient({ apiKey: process.env.GEMINI_API_KEY });
 
 app.use(express.json({ limit: '100mb' }));
 app.use(express.static('public'));
 
-// Tool Definition
 const generateImageTool = {
     name: "generate_image",
     description: "Generates an image based on a text prompt. Use this ONLY when the user explicitly asks to create, generate, draw, or make an image.",
@@ -72,73 +73,73 @@ app.post('/api/chat', async (req, res) => {
         }
 
         const cleanHistory = sanitizeHistory(history);
-        const model = client.getGenerativeModel({ 
+
+        // Στο νέο SDK, το session ξεκινά απευθείας από το client.models
+        const result = await client.models.generateContent({
             model: CHAT_MODEL,
-            systemInstruction: SYSTEM_INSTRUCTION 
+            contents: [...cleanHistory, { role: 'user', parts: messageParts }],
+            config: {
+                systemInstruction: SYSTEM_INSTRUCTION,
+                temperature: 0.7,
+                tools: [{ functionDeclarations: [generateImageTool] }],
+            },
         });
 
-        const chat = model.startChat({
-            history: cleanHistory,
-            generationConfig: { temperature: 0.7 },
-            tools: [{ functionDeclarations: [generateImageTool] }],
-        });
-
-        const result = await chat.sendMessage(messageParts);
         const response = result.response;
-        const functionCalls = response.functionCalls();
+        const call = response.candidates[0].content.parts.find(p => p.functionCall);
 
-        if (functionCalls && functionCalls.length > 0) {
-            const call = functionCalls[0];
-            
-            if (call.name === "generate_image") {
-                console.log(`Generating image for:`, call.args.prompt);
+        if (call && call.functionCall.name === "generate_image") {
+            const promptForImage = call.functionCall.args.prompt;
+            console.log(`Generating image for:`, promptForImage);
 
-                try {
-                    // 1. Παραγωγή εικόνας
-                    const imageResponse = await client.models.generateImage({
-                        model: IMAGE_MODEL,
-                        prompt: call.args.prompt,
-                        config: { numberOfImages: 1, aspectRatio: "1:1" }
-                    });
+            try {
+                // Παραγωγή εικόνας με το νέο SDK
+                const imageResponse = await client.models.generateImage({
+                    model: IMAGE_MODEL,
+                    prompt: promptForImage,
+                    config: { numberOfImages: 1, aspectRatio: "1:1" }
+                });
 
-                    const generatedImageBase64 = imageResponse.image.b64_json;
+                const generatedImageBase64 = imageResponse.image.b64_json;
 
-                    // 2. ΚΡΙΣΙΜΟ: Αποστολή του Tool Result πίσω στο Chat Session
-                    // Αυτό αποτρέπει το ContentUnion error
-                    await chat.sendMessage([{
-                        functionResponse: {
-                            name: "generate_image",
-                            response: { success: true, message: "Image generated successfully" }
+                // ΚΡΙΣΙΜΟ: Αποστολή Tool Response για αποφυγή ContentUnion error
+                // Στο νέο SDK, στέλνουμε το αποτέλεσμα της συνάρτησης για να "κλείσει" η συναλλαγή
+                const finalResult = await client.models.generateContent({
+                    model: CHAT_MODEL,
+                    contents: [
+                        ...cleanHistory,
+                        { role: 'user', parts: messageParts },
+                        response.candidates[0].content, // Το function call του μοντέλου
+                        {
+                            role: 'tool',
+                            parts: [{
+                                functionResponse: {
+                                    name: "generate_image",
+                                    response: { success: true, message: "Image generated successfully" }
+                                }
+                            }]
                         }
-                    }]);
+                    ]
+                });
 
-                    const htmlResponse = `<div class="thought">Image generated via ${IMAGE_MODEL}.</div><p>Ορίστε η εικόνα που δημιούργησα για: <b>${call.args.prompt}</b></p>`;
+                const htmlResponse = `<div class="thought">Generated image using ${IMAGE_MODEL}.</div><p>Ορίστε η εικόνα για: <b>${promptForImage}</b></p>`;
 
-                    return res.json({
-                        text: htmlResponse,
-                        generated_image: generatedImageBase64, // Συγχρονισμένο με την Java
-                        type: "image_generated"
-                    });
+                return res.json({
+                    text: htmlResponse,
+                    generated_image: generatedImageBase64,
+                    type: "image_generated"
+                });
 
-                } catch (imgError) {
-                    console.error("Image Gen Error:", imgError);
-                    
-                    // Ενημέρωση του μοντέλου για το σφάλμα
-                    await chat.sendMessage([{
-                        functionResponse: {
-                            name: "generate_image",
-                            response: { success: false, error: imgError.message }
-                        }
-                    }]);
-
-                    return res.json({
-                        text: `<div class="thought">Failed to generate image.</div><p style="color:red;">Σφάλμα: ${imgError.message}</p>`,
-                        type: "text"
-                    });
-                }
+            } catch (imgError) {
+                console.error("Image Gen Error:", imgError);
+                return res.json({
+                    text: `<div class="thought">Error generating image.</div><p style="color:red;">Error: ${imgError.message}</p>`,
+                    type: "text"
+                });
             }
         }
 
+        // Κανονική απάντηση κειμένου
         res.json({
             text: response.text(),
             type: "text"
