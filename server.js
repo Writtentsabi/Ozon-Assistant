@@ -110,7 +110,7 @@ app.post('/api/multimodal-chat', async (req, res) => {
   }
 });
 
-// 3. Endpoint για Παραγωγή/Επεξεργασία Εικόνας
+// 3. Endpoint για Παραγωγή Εικόνας (Image Generation)
 app.post('/api/generate-image', async (req, res) => {
   const { prompt, images, mimeType, aspectRatio } = req.body;
 
@@ -121,6 +121,7 @@ app.post('/api/generate-image', async (req, res) => {
   try {
     const contents = [{ text: prompt }];
 
+    // Προσθήκη εικόνων αναφοράς αν υπάρχουν [1, 4, 5]
     if (images && Array.isArray(images)) {
       images.forEach(imgBase64 => {
         contents.push({
@@ -145,29 +146,39 @@ app.post('/api/generate-image', async (req, res) => {
       }
     });
 
-    if (!response.candidates || response.candidates.length === 0) {
-        return res.status(500).json({ error: "Δεν παρήχθη αποτέλεσμα από το μοντέλο." });
+    // Ασφαλής έλεγχος της απάντησης (Robust Response Parsing) [3, 6, 7]
+    const candidate = response.candidates?.;
+    const parts = candidate?.content?.parts;
+
+    if (!parts || parts.length === 0) {
+        const reason = candidate?.finishReason |
+
+| "UNKNOWN";
+        const safetyFeedback = response.promptFeedback?.blockReason |
+
+| "";
+        return res.status(500).json({ 
+            error: `Το μοντέλο δεν επέστρεψε εικόνα. Αιτία: ${reason}. ${safetyFeedback}` 
+        });
     }
 
-    const generatedImages = response.candidates.content.parts
-   .filter(part => part.inlineData)
-   .map(part => ({
+    // Φιλτράρισμα των μερών που περιέχουν inlineData (εικόνες base64) [1, 8]
+    const generatedImages = parts
+    .filter(part => part.inlineData)
+    .map(part => ({
         data: part.inlineData.data,
         mimeType: part.inlineData.mimeType
-    }));
+      }));
 
     if (generatedImages.length === 0) {
-      const finishReason = response.candidates.finishReason;
-      return res.status(500).json({ 
-        error: finishReason === 'SAFETY'? "Η εικόνα μπλοκαρίστηκε από τα φίλτρα ασφαλείας." : "Το μοντέλο δεν επέστρεψε εικόνα." 
-      });
+        return res.status(500).json({ error: "Η απάντηση δεν περιείχε δεδομένα εικόνας." });
     }
 
     res.json({ success: true, images: generatedImages });
 
   } catch (error) {
     console.error("Image Generation Error:", error);
-    res.status(500).json({ error: "Σφάλμα κατά την παραγωγή εικόνας: " + error.message });
+    res.status(500).json({ error: "Σφάλμα κατά την παραγωγή: " + error.message });
   }
 });
 
