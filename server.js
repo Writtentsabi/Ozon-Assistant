@@ -112,7 +112,7 @@ app.post('/api/multimodal-chat', async (req, res) => {
 
 // 3. Endpoint για Παραγωγή Εικόνας (Image Generation)
 app.post('/api/generate-image', async (req, res) => {
-  const { prompt, images, mimeType, aspectRatio } = req.body;
+  const { prompt, images, mimeType, aspectRatio, history } = req.body;
 
   if (!prompt) {
     return res.status(400).json({ error: "Το prompt είναι υποχρεωτικό." });
@@ -134,6 +134,7 @@ app.post('/api/generate-image', async (req, res) => {
 
     const response = await ai.models.generateContent({
       model: IMAGE_MODEL,
+      history: history || [],
       contents: contents,
       config: {
         responseModalities: ['IMAGE'], 
