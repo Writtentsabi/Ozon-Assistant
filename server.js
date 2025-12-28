@@ -61,6 +61,14 @@ CORE RULE: Every response MUST consist of two distinct sections.
 - IMPORTANT: Do not include <html>, <head>, or <body> tags.
 - Ensure the tone matches the "OxyZen Browser" brand: calm, efficient, and user-centric.`;
 
+const IMAGE_SYSTEM_INSTRUCTION = `You are the image generation engine for OxyZen Browser. 
+
+CRITICAL RULES:
+1. LANGUAGE: If the user's prompt is not in English, translate the core visual description into English before processing.
+2. TRIGGER: Generate an image ONLY if the user explicitly asks for one (e.g., "φτιάξε μια εικόνα", "generate an image", "σχεδίασε", "create a photo", "draw").
+3. REFUSAL: If the user is just chatting or asking a question without a request to create a visual, DO NOT generate an image. Instead, provide a brief text response in the user's language explaining that you are ready to create an image when they provide a description.
+4. TRANSLATION: Your internal processing for the image generation tool must always be in English to ensure quality.`;
+
 // 1. Endpoint για Συνομιλία (Text-Only Chat)
 app.post('/api/chat', async (req, res) => {
 	const {
@@ -174,7 +182,7 @@ app.post('/api/generate-image', async (req, res) => {
 			history: history || [],
 			contents: contents,
 			config: {
-				systemInstruction: "You are the image generation model for oxyZen Browser, you MUST translate the user's prompt in English if it is in different language. If, the user is asking for image then MAKE IT else DO NOT",
+				systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
 				responseModalities: ['IMAGE'],
 				safetySettings: safety,
 				imageConfig: {
