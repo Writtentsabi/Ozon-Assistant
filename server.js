@@ -169,7 +169,7 @@ app.post('/api/generate-image', async (req, res) => {
         return res.status(500).json({ error: "Η απάντηση δεν περιείχε δεδομένα εικόνας." });
     }
 
-    res.json({ success: true, images: generatedImages });
+    res.json({ success: true, images: generatedImages, text: response.text });
 
   } catch (error) {
     console.error("Image Generation Error:", error);
