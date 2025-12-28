@@ -4,15 +4,9 @@ import { GoogleGenAI } from "@google/genai";
 import { Buffer } from 'buffer';
 
 const app = express();
-const PORT = process.env.PORT |
-
-| 3000;
-const CHAT_MODEL = process.env.GEMINI_MODEL |
-
-| "gemini-2.5-flash";
-const IMAGE_MODEL = process.env.IMAGE_MODEL |
-
-| "gemini-2.5-flash-image";
+const PORT = process.env.PORT || 3000;
+const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY
@@ -28,29 +22,18 @@ REQUIRED OUTPUT STRUCTURE:
 2. FINAL RESPONSE: Same language as user. Use only <p>, <ul>, <li>, <strong>, <a> tags.
 IMAGE GENERATION RULES: Use narrative descriptions. Material Design 3 aesthetics.`;
 
-// --- Εργαλεία για το Function Calling --- [span_0](start_span)[span_0](end_span)[span_1](start_span)[span_1](end_span)
+// Ορισμός εργαλείων για το Function Calling [span_0](start_span)[span_0](end_span)[span_1](start_span)[span_1](end_span)[span_2](start_span)[span_2](end_span)
 const tools =
         }
       },
       {
         name: "generate_image",
-        description: "Χρησιμοποιήστε το όταν ο χρήστης ζητά να δημιουργήσετε μια νέα εικόνα (φτιάξε, δείξε, δημιούργησε).",
+        description: "Χρησιμοποιήστε το όταν ο χρήστης ζητά ρητά να δημιουργήσετε μια νέα εικόνα (π.χ. 'φτιάξε', 'δείξε μου').",
         parametersJsonSchema: {
           type: "object",
           properties: {
             prompt: { type: "string", description: "Η περιγραφή της εικόνας στα Αγγλικά." },
             aspectRatio: { type: "string", enum: ["1:1", "4:3", "3:4", "16:9", "9:16"], default: "1:1" }
-          },
-          required: ["prompt"]
-        }
-      },
-      {
-        name: "multimodal_analysis",
-        description: "Χρησιμοποιήστε το όταν ο χρήστης παρέχει εικόνες και ζητά ανάλυση ή περιγραφή τους.",
-        parametersJsonSchema: {
-          type: "object",
-          properties: {
-            prompt: { type: "string", description: "Η ερώτηση σχετικά με την εικόνα." }
           },
           required: ["prompt"]
         }
@@ -62,22 +45,15 @@ const tools =
 app.use(express.static('public'));
 app.use(express.json({ limit: '50mb' }));
 
-// --- Core Logic Functions --- [span_2](start_span)[span_2](end_span)
-
-async function handleChat(prompt, history) {
-  const chat = ai.chats.create({
-    model: CHAT_MODEL,
-    history: history ||,
-    config: { systemInstruction: SYSTEM_INSTRUCTION, tools:, safetySettings: safety }
-  });
-  const response = await chat.sendMessage({ message: prompt });
-  return { text: response.text() };
-}
-
-async function handleImageGen(prompt, images, aspectRatio, history) {
+// Βασική λογική παραγωγής εικόνας [span_3](start_span)[span_3](end_span)[span_4](start_span)[span_4](end_span)
+async function handleImageGen(prompt, images, aspectRatio) {
   const contents = [{ text: prompt }];
-  if (images?.length > 0) {
-    images.forEach(img => contents.push({ inlineData: { data: img, mimeType: "image/jpeg" } }));
+  if (images && Array.isArray(images)) {
+    images.forEach(imgBase64 => {
+      contents.push({
+        inlineData: { data: imgBase64, mimeType: "image/jpeg" }
+      });
+    });
   }
 
   const response = await ai.models.generateContent({
@@ -86,31 +62,29 @@ async function handleImageGen(prompt, images, aspectRatio, history) {
     config: { 
       systemInstruction: SYSTEM_INSTRUCTION,
       safetySettings: safety,
-      imageConfig: { aspectRatio: aspectRatio |
-
-| "1:1", personGeneration: "ALLOW" }
+      imageConfig: {
+        aspectRatio: aspectRatio || "1:1",
+        personGeneration: "ALLOW"
+      }
     }
   });
 
-  const candidate = response.candidates? response.candidates : null;
-  const parts = candidate?.content?.parts ||;
+  const parts = response.candidates?.?.content?.parts ||;
   const generatedImages = parts
    .filter(part => part.inlineData)
    .map(part => ({ data: part.inlineData.data, mimeType: part.inlineData.mimeType }));
 
-  return { success: true, images: generatedImages, text: response.text() };
+  return { success: true, images: generatedImages, text: response.text };
 }
 
-// --- Endpoints ---
-
-// 1. Zen Orchestrator (Το κεντρικό Call) [span_3](start_span)[span_3](end_span)[span_4](start_span)[span_4](end_span)[span_5](start_span)[span_5](end_span)
+// Κεντρικό Endpoint Ενορχήστρωσης [span_5](start_span)[span_5](end_span)[span_6](start_span)[span_6](end_span)[span_7](start_span)[span_7](end_span)
 app.post('/api/zen-orchestrator', async (req, res) => {
   const { prompt, images, history } = req.body;
   
   try {
     const chat = ai.chats.create({
       model: CHAT_MODEL,
-      history: history ||,
+      history: history || [],
       config: { 
         systemInstruction: SYSTEM_INSTRUCTION, 
         tools: tools, 
@@ -118,54 +92,41 @@ app.post('/api/zen-orchestrator', async (req, res) => {
       }
     });
 
-    // Αν υπάρχουν εικόνες στην είσοδο, τις στέλνουμε μαζί με το prompt
-    const messageContent = images?.length > 0 
-     ?
-      : prompt;
+    // Κατασκευή του μηνύματος (πολυτροπικό αν υπάρχουν εικόνες) [span_8](start_span)[span_8](end_span)[span_9](start_span)[span_9](end_span)
+    let messageContent;
+    if (images && Array.isArray(images) && images.length > 0) {
+      messageContent =;
+    } else {
+      messageContent = prompt;
+    }
 
     const result = await chat.sendMessage(messageContent);
-    const response = result.response;
-    const call = response.functionCalls? response.functionCalls : null;
+    const call = result.response.functionCalls? result.response.functionCalls : null;
 
     if (!call) {
-      return res.json({ text: response.text() });
+      return res.json({ text: result.response.text });
     }
 
-    // Διακλάδωση ανάλογα με το Tool που επέλεξε το Gemini
-    console.log(`Zen decided to use: ${call.name}`);
+    console.log(`Zen Orchestrator: Triggering tool ${call.name}`);
 
+    // Εκτέλεση του εργαλείου
     if (call.name === "generate_image") {
-      const imgResult = await handleImageGen(call.args.prompt, images, call.args.aspectRatio, history);
+      const imgResult = await handleImageGen(call.args.prompt, images, call.args.aspectRatio);
       return res.json(imgResult);
     } 
-    
-    if (call.name === "chat_only" |
 
-| call.name === "multimodal_analysis") {
-      // Στέλνουμε ένα εικονικό response πίσω στο μοντέλο για να ολοκληρώσει τη σκέψη του
-      const finalResult = await chat.sendMessage();
-      return res.json({ text: finalResult.response.text() });
-    }
+    // Για άλλα εργαλεία, στέλνουμε το functionResponse πίσω στο μοντέλο [span_10](start_span)[span_10](end_span)[span_11](start_span)[span_11](end_span)
+    const toolResponse = { status: "processed", tool: call.name };
+    const finalResult = await chat.sendMessage();
+
+    res.json({ text: finalResult.response.text });
 
   } catch (error) {
     console.error("Orchestrator Error:", error);
-    res.status(500).json({ error: "Σφάλμα ενορχήστρωσης: " + error.message });
+    res.status(500).json({ error: "Internal Server Error: " + error.message });
   }
-});
-
-// 2. Legacy Endpoints (Διατηρούνται για συμβατότητα)
-app.post('/api/chat', async (req, res) => {
-  try { res.json(await handleChat(req.body.prompt, req.body.history)); }
-  catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/generate-image', async (req, res) => {
-  try { res.json(await handleImageGen(req.body.prompt, req.body.images, req.body.aspectRatio)); }
-  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.listen(PORT, () => {
   console.log(`Zen Server running on port ${PORT}`);
 });
-
-
