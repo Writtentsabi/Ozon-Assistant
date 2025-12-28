@@ -151,7 +151,6 @@ app.post('/api/generate-image', async (req, res) => {
       history: history || [],
       contents: contents,
       config: { 
-	systemInstruction: SYSTEM_INSTRUCTION,
         safetySettings: safety,
         imageConfig: {
           aspectRatio: aspectRatio || "1:1",
