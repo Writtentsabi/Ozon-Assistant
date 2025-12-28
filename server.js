@@ -94,9 +94,9 @@ app.post('/api/chat', async (req, res) => {
 			text: response.text
 		});
 	} catch (error) {
-		console.error("Zen Chat Error:", error);
+		console.error("Gemini Chat Error:", error);
 		res.status(500).json({
-			error: "Σφάλμα κατά την κλήση του Zen Chat."
+			error: "Σφάλμα κατά την κλήση του Gemini Chat."
 		});
 	}
 });
@@ -151,8 +151,7 @@ app.post('/api/generate-image', async (req, res) => {
 		prompt,
 		images,
 		mimeType,
-		aspectRatio,
-		history
+		aspectRatio
 	} = req.body;
 
 	if (!prompt) {
@@ -179,7 +178,6 @@ app.post('/api/generate-image', async (req, res) => {
 
 		const response = await ai.models.generateContent({
 			model: IMAGE_MODEL,
-			history: history || [],
 			contents: contents,
 			config: {
 				systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
@@ -212,17 +210,13 @@ app.post('/api/generate-image', async (req, res) => {
 		}));
 
 		if (generatedImages.length === 0) {
-			res.json({
-				success: true, text: response.text
-			});
-		} else {
-			res.json({
-				success: true, images: generatedImages, text: response.text
+			return res.status(500).json({
+				error: "Η απάντηση δεν περιείχε δεδομένα εικόνας."
 			});
 		}
 
 		res.json({
-			success: true, images: generatedImages, text: response.text
+			success: true, images: generatedImages
 		});
 
 	} catch (error) {
