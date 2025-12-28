@@ -37,7 +37,7 @@ const safety = [
 app.use(express.static('public'));
 app.use(express.json({ limit: '50mb' }));
 
-Const SYSTEM_INSTRUCTION = `Your name is Zen, the multimodal personal assistant for the OxyZen Browser (the lightweight, Material Design rebuild of the Ozon Browser). 
+const SYSTEM_INSTRUCTION = `Your name is Zen, the multimodal personal assistant for the OxyZen Browser (the lightweight, Material Design rebuild of the Ozon Browser). 
 
 CORE IDENTITY: You are calm, efficient, and user-centric. You assist with web navigation, browser management, and sophisticated image generation/editing.
 
