@@ -1,162 +1,229 @@
+// server.js (Πλήρης και Διορθωμένη Έκδοση)
 import 'dotenv/config';
 import express from 'express';
-import { GoogleGenAI } from "@google/genai";
-import { Buffer } from 'buffer';
+import {
+	GoogleGenAI
+} from "@google/genai";
+import {
+	Buffer
+} from 'buffer';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY
+const ai = new GoogleGenAI( {
+	apiKey: process.env.GEMINI_API_KEY
 });
 
-// Ρυθμίσεις Ασφαλείας
-const safety = [
-  {
-    category: "HARM_CATEGORY_HARASSMENT",
-    threshold: "BLOCK_NONE",
-  },
-  {
-    category: "HARM_CATEGORY_HATE_SPEECH",
-    threshold: "BLOCK_NONE",
-  },
-  {
-    category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-    threshold: "BLOCK_NONE",
-  },
-  {
-    category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-    threshold: "BLOCK_NONE",
-  },
+// Ρυθμίσεις Ασφαλείας (Safety Settings) όπως ορίστηκαν από τον χρήστη
+const safety = [{
+	category: "HARM_CATEGORY_HARASSMENT",
+	threshold: "BLOCK_NONE",
+},
+	{
+		category: "HARM_CATEGORY_HATE_SPEECH",
+		threshold: "BLOCK_NONE",
+	},
+	{
+		category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+		threshold: "BLOCK_NONE",
+	},
+	{
+		category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+		threshold: "BLOCK_NONE",
+	},
 ];
 
-const SYSTEM_INSTRUCTION = `Your name is Zen, the multimodal personal assistant for the OxyZen Browser.
-CORE IDENTITY: You are calm, efficient, and user-centric. You specialize in web navigation and high-fidelity image generation/editing.
-REQUIRED OUTPUT STRUCTURE:
-1. INTERNAL MONOLOGUE: <div class="thought">...</div> (Language Detection, Intent, Modality Commitment, Visual Planning).
-2. FINAL RESPONSE: Same language as user. Use only <p>, <ul>, <li>, <strong>, <a> tags.
-IMAGE GENERATION RULES: Use narrative descriptions. Material Design 3 aesthetics.`;
-
-// Ορισμός εργαλείων για το Function Calling
-const tools = [
-  {
-    functionDeclarations: [
-      {
-        name: "generate_image",
-        description: "Χρησιμοποιήστε το όταν ο χρήστης ζητά ρητά να δημιουργήσετε μια νέα εικόνα (π.χ. 'φτιάξε', 'δείξε μου').",
-        parameters: {
-          type: "OBJECT",
-          properties: {
-            prompt: { type: "STRING", description: "Η περιγραφή της εικόνας στα Αγγλικά." },
-            aspectRatio: { type: "STRING", enum: ["1:1", "4:3", "3:4", "16:9", "9:16"], default: "1:1" }
-          },
-          required: ["prompt"]
-        }
-      }
-    ]
-  }
-];
 
 app.use(express.static('public'));
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({
+	limit: '50mb'
+}));
 
-// Βασική λογική παραγωγής εικόνας
-async function handleImageGen(prompt, images, aspectRatio) {
-  const contents = [{ role: "user", parts: [{ text: prompt }] }];
-  
-  if (images && Array.isArray(images)) {
-    images.forEach(imgBase64 => {
-      contents[0].parts.push({
-        inlineData: { data: imgBase64, mimeType: "image/jpeg" }
-      });
-    });
-  }
+const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for the OxyZen Browser.
+An app uploaded also on Play Store.
 
-  const model = ai.getGenerativeModel({ model: IMAGE_MODEL });
-  const result = await model.generateContent({
-    contents: contents,
-    generationConfig: { 
-      systemInstruction: SYSTEM_INSTRUCTION,
-      safetySettings: safety,
-      // Σημείωση: Το imageConfig εξαρτάται από το συγκεκριμένο API version
-      imageConfig: {
-        aspectRatio: aspectRatio || "1:1",
-        personGeneration: "ALLOW"
-      }
-    }
-  });
+CORE RULE: Every response MUST consist of two distinct sections.
 
-  const response = await result.response;
-  const parts = response.candidates?.[0]?.content?.parts || [];
-  const generatedImages = parts
-   .filter(part => part.inlineData)
-   .map(part => ({ data: part.inlineData.data, mimeType: part.inlineData.mimeType }));
+1. INTERNAL MONOLOGUE (The "Thought" process):
+- You must start every response with a <div class="thought"> tag.
+- In this section, analyze the user's intent, the context of the conversation, and your plan for the response.
+- Reflect on potential nuances, tone requirements, or specific information needed from the user's prompt.
+- This is your private reasoning space. Keep it analytical and objective.
+- Close this section with </div>.
 
-  return { success: true, images: generatedImages, text: response.text() };
-}
+2. FINAL RESPONSE:
+- Immediately after the thought block, provide your actual response to the user.
+- Use structured HTML tags (e.g., <p>, <ul>, <strong>, <a>).
+- Maintain a helpful, Zen-like, and professional personality.
+- IMPORTANT: Do not include <html>, <head>, or <body> tags.
+- Ensure the tone matches the "OxyZen Browser" brand: calm, efficient, and user-centric.`;
 
-// Κεντρικό Endpoint Ενορχήστρωσης
-app.post('/api/zen-orchestrator', async (req, res) => {
-  const { prompt, images, history } = req.body;
-  
-  try {
-    const model = ai.getGenerativeModel({ 
-        model: CHAT_MODEL,
-        systemInstruction: SYSTEM_INSTRUCTION
-    });
+// 1. Endpoint για Συνομιλία (Text-Only Chat)
+app.post('/api/chat', async (req, res) => {
+	const {
+		prompt, history
+	} = req.body;
+	const chat = ai.chats.create({
+		model: CHAT_MODEL,
+		history: history || [],
+		config: {
+			systemInstruction: SYSTEM_INSTRUCTION,
+			tools: [{
+				googleSearch: {}
+			}],
+			safetySettings: safety,
+		},
+	});
 
-    const chat = model.startChat({
-      history: history || [],
-      tools: tools, 
-      safetySettings: safety 
-    });
+	try {
+		const response = await chat.sendMessage({
+			message: prompt
+		});
+		res.json({
+			text: response.text
+		});
+	} catch (error) {
+		console.error("Gemini Chat Error:", error);
+		res.status(500).json({
+			error: "Σφάλμα κατά την κλήση του Gemini Chat."
+		});
+	}
+});
 
-    // Κατασκευή του μηνύματος (πολυτροπικό αν υπάρχουν εικόνες)
-    let messageContent = [];
-    messageContent.push({ text: prompt });
+// 2. Endpoint για Πολυτροπική Συνομιλία (Input: Images -> Output: Text)
+app.post('/api/multimodal-chat', async (req, res) => {
+	const {
+		prompt, images, mimeType, history
+	} = req.body;
+	if (!images ||!Array.isArray(images) ||!prompt) {
+		return res.status(400).json({
+			error: "Missing images array or prompt."
+		});
+	}
 
-    if (images && Array.isArray(images) && images.length > 0) {
-      images.forEach(img => {
-          messageContent.push({ inlineData: { data: img, mimeType: "image/jpeg" } });
-      });
-    }
+	const chat = ai.chats.create({
+		model: CHAT_MODEL,
+		history: history || [],
+		config: {
+			systemInstruction: SYSTEM_INSTRUCTION,
+			tools: [{
+				googleSearch: {}
+			}],
+			safetySettings: safety,
+		},
+	});
 
-    const result = await chat.sendMessage(messageContent);
-    const response = await result.response;
-    const calls = response.functionCalls();
+	try {
+		const imageParts = images.map(imgBase64 => ({
+			inlineData: {
+				data: imgBase64,
+				mimeType: mimeType || "image/jpeg"
+			}
+		}));
+		const response = await chat.sendMessage({
+			message: [...imageParts, prompt]
+		});
+		res.json({
+			text: response.text
+		});
+	} catch (error) {
+		console.error("Multimodal Error:", error);
+		res.status(500).json({
+			error: "Server error."
+		});
+	}
+});
 
-    if (!calls || calls.length === 0) {
-      return res.json({ text: response.text() });
-    }
+// 3. Endpoint για Παραγωγή Εικόνας (Image Generation)
+app.post('/api/generate-image', async (req, res) => {
+	const {
+		prompt,
+		images,
+		mimeType,
+		aspectRatio,
+		history
+	} = req.body;
 
-    const call = calls[0];
-    console.log(`Zen Orchestrator: Triggering tool ${call.name}`);
+	if (!prompt) {
+		return res.status(400).json({
+			error: "Το prompt είναι υποχρεωτικό."
+		});
+	}
 
-    // Εκτέλεση του εργαλείου
-    if (call.name === "generate_image") {
-      const imgResult = await handleImageGen(call.args.prompt, images, call.args.aspectRatio);
-      return res.json(imgResult);
-    } 
+	try {
+		const contents = [{
+			text: prompt
+		}];
 
-    // Για άλλα εργαλεία
-    const toolResponse = {
-      functionResponse: {
-        name: call.name,
-        response: { status: "processed", tool: call.name }
-      }
-    };
-    
-    const finalResult = await chat.sendMessage([toolResponse]);
-    res.json({ text: finalResult.response.text() });
+		if (images && Array.isArray(images)) {
+			images.forEach(imgBase64 => {
+				contents.push({
+					inlineData: {
+						data: imgBase64,
+						mimeType: mimeType || "image/jpeg"
+					}
+				});
+			});
+		}
 
-  } catch (error) {
-    console.error("Orchestrator Error:", error);
-    res.status(500).json({ error: "Internal Server Error: " + error.message });
-  }
+		const response = await ai.models.generateContent({
+			model: IMAGE_MODEL,
+			history: history || [],
+			contents: contents,
+			config: {
+				responseModalities: ['IMAGE'],
+				safetySettings: safety,
+				imageConfig: {
+					aspectRatio: aspectRatio || "1:1",
+					personGeneration: "ALLOW"
+				}
+			}
+		});
+
+		// ΔΙΟΡΘΩΣΗ ΣΦΑΛΜΑΤΟΣ: Αφαίρεση του ?. πριν το ; και ενοποίηση των ||
+		const candidate = response.candidates ? response.candidates[0]: null;
+		const parts = candidate?.content?.parts;
+
+		if (!parts || parts.length === 0) {
+			const reason = candidate?.finishReason || "UNKNOWN";
+			const safetyFeedback = response.promptFeedback?.blockReason || "";
+			return res.status(500).json({
+				error: `Το μοντέλο δεν επέστρεψε εικόνα. Αιτία: ${reason}. ${safetyFeedback}`
+			});
+		}
+
+		const generatedImages = parts
+		.filter(part => part.inlineData)
+		.map(part => ({
+			data: part.inlineData.data,
+			mimeType: part.inlineData.mimeType
+		}));
+
+		if (generatedImages.length === 0) {
+			res.json({
+				success: true, text: response.text
+			});
+		} else {
+			res.json({
+				success: true, images: generatedImages, text: response.text
+			});
+		}
+
+		res.json({
+			success: true, images: generatedImages, text: response.text
+		});
+
+	} catch (error) {
+		console.error("Image Generation Error:", error);
+		res.status(500).json({
+			error: "Σφάλμα κατά την παραγωγή: " + error.message
+		});
+	}
 });
 
 app.listen(PORT, () => {
-  console.log(`Zen Server running on port ${PORT}`);
+	console.log(`Server running on port ${PORT}`);
 });
