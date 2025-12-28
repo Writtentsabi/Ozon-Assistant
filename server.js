@@ -86,9 +86,9 @@ app.post('/api/chat', async (req, res) => {
 			text: response.text
 		});
 	} catch (error) {
-		console.error("Gemini Chat Error:", error);
+		console.error("Zen Chat Error:", error);
 		res.status(500).json({
-			error: "Σφάλμα κατά την κλήση του Gemini Chat."
+			error: "Σφάλμα κατά την κλήση του Zen Chat."
 		});
 	}
 });
@@ -174,6 +174,7 @@ app.post('/api/generate-image', async (req, res) => {
 			history: history || [],
 			contents: contents,
 			config: {
+				systemInstruction: "You are the image generation model for oxyZen Browser, you MUST translate the user's prompt in English if it is in different language. If, the user is asking for image then MAKE IT else DO NOT",
 				responseModalities: ['IMAGE'],
 				safetySettings: safety,
 				imageConfig: {
