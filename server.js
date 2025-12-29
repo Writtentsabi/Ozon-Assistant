@@ -23,19 +23,19 @@ const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 // Ρυθμίσεις Ασφαλείας (Safety Settings) όπως ορίστηκαν από τον χρήστη
 const safety = [{
 	category: "HARM_CATEGORY_HARASSMENT",
-	threshold: "BLOCK_NONE",
-},
+	threshold: "OFF",
+	},
 	{
 		category: "HARM_CATEGORY_HATE_SPEECH",
-		threshold: "BLOCK_NONE",
+		threshold: "OFF",
 	},
 	{
 		category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-		threshold: "BLOCK_NONE",
+		threshold: "OFF",
 	},
 	{
 		category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-		threshold: "BLOCK_NONE",
+		threshold: "OFF",
 	},
 ];
 
