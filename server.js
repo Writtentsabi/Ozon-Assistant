@@ -255,6 +255,7 @@ app.post('/api/free-chat', async (req, res) => {
 			Status: error.status,
 			Error: error.mesage,
 			Data: error.data
+		});
 
 	}
 
