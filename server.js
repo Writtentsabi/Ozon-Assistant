@@ -18,7 +18,7 @@ const ai = new GoogleGenAI( {
 	apiKey: process.env.GEMINI_API_KEY
 });
 
-const paxsenix = new PaxSenixAI();
+const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 
 // Ρυθμίσεις Ασφαλείας (Safety Settings) όπως ορίστηκαν από τον χρήστη
 const safety = [{
