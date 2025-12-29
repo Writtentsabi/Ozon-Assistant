@@ -7,6 +7,7 @@ import {
 import {
 	Buffer
 } from 'buffer';
+import PaxSenixAI from '@paxsenix/ai';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,6 +17,8 @@ const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
 const ai = new GoogleGenAI( {
 	apiKey: process.env.GEMINI_API_KEY
 });
+
+const paxsenix = new PaxSenixAI();
 
 // Ρυθμίσεις Ασφαλείας (Safety Settings) όπως ορίστηκαν από τον χρήστη
 const safety = [{
@@ -225,6 +228,36 @@ app.post('/api/generate-image', async (req, res) => {
 			error: "Σφάλμα κατά την παραγωγή: " + error.message
 		});
 	}
+});
+
+//4. Endpoint για δωρεαν παραγωγη chat
+app.post('/api/free-chat', async (req, res) => {
+	const {
+                prompt, history
+        } = req.body;
+	try {
+		const response = await paxsenix.createChatCompletion({
+			model: 'gpt-3.5-turbo',
+			messages: [
+				{ role: 'system', content: SYSTEM_INSTRUCTION },
+				{ role: 'user', content: prompt }
+			],
+			temperature: 0.7,
+			max_tokens: 100
+		});
+
+		res.json({
+			text: response.choices[0].message.content
+		});
+
+	} catch (error) {
+		res.status(error.status).json({
+			Status: error.status,
+			Error: error.mesage,
+			Data: error.data
+
+	}
+
 });
 
 app.listen(PORT, () => {
