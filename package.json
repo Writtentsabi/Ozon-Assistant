@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.34.0",
+    "@paxsenix/ai": "^0.1.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0"
   }
