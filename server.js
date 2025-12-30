@@ -236,8 +236,6 @@ app.post('/api/paxsenix-chat', async (req, res) => {
                 prompt, history
         } = req.body;
 
-	for(
-
 	try {
 		const response = await paxsenix.createChatCompletion({
 			model: CHAT_MODEL,
