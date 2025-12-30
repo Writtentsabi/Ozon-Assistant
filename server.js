@@ -72,48 +72,11 @@ CRITICAL RULES:
 3. REFUSAL: If the user is just chatting or asking a question without a request to create a visual, DO NOT generate an image. Instead, provide a brief text response in the user's language explaining that you are ready to create an image when they provide a description.
 4. TRANSLATION: Your internal processing for the image generation tool must always be in English to ensure quality.`;
 
-// 1. Endpoint για Συνομιλία (Text-Only Chat)
+// 2. Endpoint για Πολυτροπική Συνομιλία + μονο κειμενο (Input: Images -> Output: Text)
 app.post('/api/chat', async (req, res) => {
-	const {
-		prompt, history
-	} = req.body;
-	const chat = ai.chats.create({
-		model: CHAT_MODEL,
-		history: history || [],
-		config: {
-			systemInstruction: SYSTEM_INSTRUCTION,
-			tools: [{
-				googleSearch: {}
-			}],
-			safetySettings: safety,
-		},
-	});
-
-	try {
-		const response = await chat.sendMessage({
-			message: prompt
-		});
-		res.json({
-			text: response.text
-		});
-	} catch (error) {
-		console.error("Gemini Chat Error:", error);
-		res.status(500).json({
-			error: "Σφάλμα κατά την κλήση του Gemini Chat."
-		});
-	}
-});
-
-// 2. Endpoint για Πολυτροπική Συνομιλία (Input: Images -> Output: Text)
-app.post('/api/multimodal-chat', async (req, res) => {
 	const {
 		prompt, images, mimeType, history
 	} = req.body;
-	if (!images ||!Array.isArray(images) ||!prompt) {
-		return res.status(400).json({
-			error: "Missing images array or prompt."
-		});
-	}
 
 	const chat = ai.chats.create({
 		model: CHAT_MODEL,
@@ -128,22 +91,30 @@ app.post('/api/multimodal-chat', async (req, res) => {
 	});
 
 	try {
-		const imageParts = images.map(imgBase64 => ({
-			inlineData: {
-				data: imgBase64,
-				mimeType: mimeType || "image/jpeg"
-			}
-		}));
-		const response = await chat.sendMessage({
-			message: [...imageParts, prompt]
-		});
+		if (!images ||!Array.isArray(images) ||!prompt) {
+			const response = await chat.sendMessage({
+				message:prompt
+			});
+		} else {
+
+
+			const imageParts = images.map(imgBase64 => ({
+				inlineData: {
+					data: imgBase64,
+					mimeType: mimeType || "image/jpeg"
+				}
+			}));
+			const response = await chat.sendMessage({
+				message: [...imageParts, prompt]
+			});
+		}
 		res.json({
 			text: response.text
 		});
 	} catch (error) {
-		console.error("Multimodal Error:", error);
+		console.error("Zen Error:", error);
 		res.status(500).json({
-			error: "Server error."
+			error: "Server error:" + error
 		});
 	}
 });
@@ -238,16 +209,11 @@ app.post('/api/paxsenix-chat', async (req, res) => {
 
 	try {
 		const response = await paxsenix.createChatCompletion({
-			model: CHAT_MODEL,
-			history: history || [],
-			config: {
-			systemInstruction: SYSTEM_INSTRUCTION,
-				tools: [{
-					googleSearch: {}
-				}],
-			safetySettings: safety,
-			}
-
+			model: 'gpt-3.5-turbo',
+			messages:[
+				{ role: 'system', content: SYSTEM_INSTRUCTION },
+				{ role: 'user', content: prompt }
+			]
 		});
 
 		res.json({
