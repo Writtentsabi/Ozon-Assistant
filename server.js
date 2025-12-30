@@ -91,9 +91,13 @@ app.post('/api/chat', async (req, res) => {
 	});
 
 	try {
-		if (!images ||!Array.isArray(images) ||!prompt) {
+		if (!images ||!Array.isArray(images)) {
 			const response = await chat.sendMessage({
 				message:prompt
+			});
+
+			res.json({
+				text: response.text
 			});
 		} else {
 
@@ -107,10 +111,12 @@ app.post('/api/chat', async (req, res) => {
 			const response = await chat.sendMessage({
 				message: [...imageParts, prompt]
 			});
+
+			res.json({
+				text: response.text
+			});
 		}
-		res.json({
-			text: response.text
-		});
+	
 	} catch (error) {
 		console.error("Zen Error:", error);
 		res.status(500).json({
