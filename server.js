@@ -90,6 +90,12 @@ app.post('/api/chat', async (req, res) => {
 		},
 	});
 
+	// Υπολογισμός tokens για το τρέχον ιστορικό συν το νέο μήνυμα
+	const countResponse = await ai.models.countTokens({
+		model: CHAT_MODEL,
+  		contents: [...history, { role: 'user', parts: [{ text: prompt }] }],
+	});
+
 	try {
 		if (!images ||!Array.isArray(images)) {
 			const response = await chat.sendMessage({
@@ -97,7 +103,8 @@ app.post('/api/chat', async (req, res) => {
 			});
 
 			res.json({
-				text: response.text
+				text: response.text,
+				token: response.usageMetadata.totalTokenCount
 			});
 		} else {
 
@@ -113,7 +120,8 @@ app.post('/api/chat', async (req, res) => {
 			});
 
 			res.json({
-				text: response.text
+				text: response.text,
+				token: response.usageMetadata.totalTokenCount
 			});
 		}
 	
@@ -196,7 +204,9 @@ app.post('/api/generate-image', async (req, res) => {
 		}
 
 		res.json({
-			success: true, images: generatedImages
+			success: true,
+			images: generatedImages,
+			token: response.usageMetadata.totalTokenCount
 		});
 
 	} catch (error) {
@@ -237,14 +247,14 @@ app.post('/api/paxsenix-chat', async (req, res) => {
 
 });
 
-app.post('/api/paxsenix-list', async (req, res) => { 
-   	try { 
-     		// Example 1: List available models 
+app.post('/api/paxsenix-list', async (req, res) => {
+   	try {
+     		// Example 1: List available models
      		console.log('Listing available models...'); 
      		const models = await paxsenix.listModels(); 
      		res.json({
 			text:`Available models: ${models.data.map(model => model.id).join(', ')}`
-		}); 
+		});
      		console.log('-------------------');
 	} catch (error) {
 		res.status(error).json({
@@ -258,18 +268,18 @@ app.post('/api/perchance', async (req, res) => {
 		prompt,history
 	} = req.body;
 	const count = 5;
-      
+
 	try {
         	const response = await fetch(`https://perchance.org/api/generateList.php?generator=${prompt}&count=${count}`);
-        
+
         	if (!response.ok) {
           		res.status(response.status).json({
 				error:response.status
 			});
         	}
-        
+
         	const data = await response.json();
-        
+
         	if (data && data.length > 0) {
 			res.json({
 				text: data
