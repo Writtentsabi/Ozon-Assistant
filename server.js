@@ -268,6 +268,10 @@ app.post('/api/paxsenix-list', async (req, res) => {
 			text:`Available models: ${models.data.map(model => model.id).join(', ')}`
 		}); 
      		console.log('-------------------');
+	} catch (error) {
+		res.status(error).json({
+			error: "No response on getting models:" + error
+		});
 	}
 });
 
