@@ -235,17 +235,25 @@ app.post('/api/paxsenix-chat', async (req, res) => {
 	const {
                 prompt, history
         } = req.body;
+
+	for(
+
 	try {
 		const response = await paxsenix.createChatCompletion({
-			model: 'gpt-3.5-turbo',
-			messages: [
-				{ role: 'system', content: SYSTEM_INSTRUCTION },
-				{ role: 'user', content: prompt }
-			]
+			model: CHAT_MODEL,
+			history: history || [],
+			config: {
+			systemInstruction: SYSTEM_INSTRUCTION,
+				tools: [{
+					googleSearch: {}
+				}],
+			safetySettings: safety,
+			}
+
 		});
 
 		res.json({
-			text: response.choices[0].message.content
+			text: response.text
 		});
 
 	} catch (error) {
