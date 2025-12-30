@@ -23,19 +23,19 @@ const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 // Ρυθμίσεις Ασφαλείας (Safety Settings) όπως ορίστηκαν από τον χρήστη
 const safety = [{
 	category: "HARM_CATEGORY_HARASSMENT",
-	threshold: "OFF",
+	threshold: "BLOCK_NONE",
 	},
 	{
 		category: "HARM_CATEGORY_HATE_SPEECH",
-		threshold: "OFF",
+		threshold: "BLOCK_NONE",
 	},
 	{
 		category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-		threshold: "OFF",
+		threshold: "BLOCK_NONE",
 	},
 	{
 		category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-		threshold: "OFF",
+		threshold: "BLOCK_NONE",
 	},
 ];
 
@@ -231,7 +231,7 @@ app.post('/api/generate-image', async (req, res) => {
 });
 
 //4. Endpoint για δωρεαν παραγωγη chat
-app.post('/api/free-chat', async (req, res) => {
+app.post('/api/paxsenix-chat', async (req, res) => {
 	const {
                 prompt, history
         } = req.body;
@@ -241,9 +241,7 @@ app.post('/api/free-chat', async (req, res) => {
 			messages: [
 				{ role: 'system', content: SYSTEM_INSTRUCTION },
 				{ role: 'user', content: prompt }
-			],
-			temperature: 0.7,
-			max_tokens: 100
+			]
 		});
 
 		res.json({
@@ -259,6 +257,51 @@ app.post('/api/free-chat', async (req, res) => {
 
 	}
 
+});
+
+app.post('/api/paxsenix-list', async (req, res) => { 
+   	try { 
+     		// Example 1: List available models 
+     		console.log('Listing available models...'); 
+     		const models = await paxsenix.listModels(); 
+     		res.json({
+			text:`Available models: ${models.data.map(model => model.id).join(', ')}`
+		}); 
+     		console.log('-------------------');
+	}
+});
+
+app.post('/api/perchance', async (req, res) => {
+	const {
+		prompt,history
+	} = req.body;
+	const count = 5;
+      
+	try {
+        	const response = await fetch(`https://perchance.org/api/generateList.php?generator=${prompt}&count=${count}`);
+        
+        	if (!response.ok) {
+          		res.status(response.status).json({
+				error:response.status
+			});
+        	}
+        
+        	const data = await response.json();
+        
+        	if (data && data.length > 0) {
+			res.json({
+				text: data
+			});
+        	} else {
+			res.status(500).json({
+				error: "No response available"
+			});
+        	}
+	} catch (error) {
+        	res.status(error).json({
+			error: "Error fetching from Perchance:" + error
+		});
+    	}
 });
 
 app.listen(PORT, () => {
