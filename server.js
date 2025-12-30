@@ -90,12 +90,6 @@ app.post('/api/chat', async (req, res) => {
 		},
 	});
 
-	// Υπολογισμός tokens για το τρέχον ιστορικό συν το νέο μήνυμα
-	const countResponse = await ai.models.countTokens({
-		model: CHAT_MODEL,
-  		contents: [...history, { role: 'user', parts: [{ text: prompt }] }],
-	});
-
 	try {
 		if (!images ||!Array.isArray(images)) {
 			const response = await chat.sendMessage({
