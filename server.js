@@ -290,8 +290,13 @@ app.post('/api/perchance', async (req, res) => {
     	}
 });
 
-app.get('/ping', (req, res) => {
-    res.send('pong');
+// Endpoint για διατήρηση του server σε εγρήγορση (Keep-alive)
+app.get('/api/wake', (req, res) => {
+    res.status(200).json({ 
+        status: "online", 
+        message: "Zen is awake and ready.",
+        timestamp: new Date().toISOString()
+    });
 });
 
 app.listen(PORT, () => {
