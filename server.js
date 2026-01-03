@@ -1,158 +1,296 @@
-// server.js (Πλήρης διορθωμένη έκδοση για @google/genai)
+// server.js (Πλήρης και Διορθωμένη Έκδοση)
 import 'dotenv/config';
 import express from 'express';
-import { GoogleGenAI } from "@google/genai";
-import { Buffer } from 'buffer';
+import {
+	GoogleGenAI
+} from "@google/genai";
+import {
+	Buffer
+} from 'buffer';
 import PaxSenixAI from '@paxsenix/ai';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
 
-// Χρήση σταθερών μοντέλων
-const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash-exp"; 
-const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.0-flash-exp";
+const ai = new GoogleGenAI( {
+	apiKey: process.env.GEMINI_API_KEY
+});
 
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 
-const safetySettings = [
-    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+// Ρυθμίσεις Ασφαλείας (Safety Settings) όπως ορίστηκαν από τον χρήστη
+const safety = [{
+	category: "HARM_CATEGORY_HARASSMENT",
+	threshold: "BLOCK_NONE",
+	},
+	{
+		category: "HARM_CATEGORY_HATE_SPEECH",
+		threshold: "BLOCK_NONE",
+	},
+	{
+		category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+		threshold: "BLOCK_NONE",
+	},
+	{
+		category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+		threshold: "BLOCK_NONE",
+	},
 ];
 
+
 app.use(express.static('public'));
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({
+	limit: '50mb'
+}));
 
 const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for the OxyZen Browser.
-CORE RULE: Every response MUST consist of:
-1. INTERNAL MONOLOGUE in <div class="thought"> tags.
-2. FINAL RESPONSE in HTML tags.`;
+An app uploaded also on Play Store.
 
-const IMAGE_SYSTEM_INSTRUCTION = `Translate visual description to English and generate image.`;
+CORE RULE: Every response MUST consist of two distinct sections.
 
-// --- Helper Logic Functions ---
+1. INTERNAL MONOLOGUE (The "Thought" process):
+- You must start every response with a <div class="thought"> tag.
+- In this section, analyze the user's intent, the context of the conversation, and your plan for the response.
+- Reflect on potential nuances, tone requirements, or specific information needed from the user's prompt.
+- This is your private reasoning space. Keep it analytical and objective.
+- Close this section with </div>.
 
-async function getRouteIntent(prompt) {
-    try {
-        const result = await genAI.models.generateContent({
-            model: "gemini-2.0-flash-exp",
-            config: {
-                systemInstruction: "Reply ONLY 'IMAGE' or 'TEXT' based on user intent."
-            },
-            contents: [{ role: 'user', parts: [{ text: prompt }] }]
-        });
-        const responseText = result.text().trim().toUpperCase();
-        return responseText.includes("IMAGE") ? "IMAGE" : "TEXT";
-    } catch (error) {
-        return "TEXT";
-    }
-}
+2. FINAL RESPONSE:
+- Immediately after the thought block, provide your actual response to the user.
+- Use structured HTML tags (e.g., <p>, <ul>, <strong>, <a>).
+- Maintain a helpful, Zen-like, and professional personality.
+- IMPORTANT: Do not include <html>, <head>, or <body> tags.
+- Ensure the tone matches the "OxyZen Browser" brand: calm, efficient, and user-centric.`;
 
-async function chatWithLogic(prompt, history, images, mimeType) {
-    const chat = genAI.chats.create({
-        model: CHAT_MODEL,
-        config: {
-            systemInstruction: SYSTEM_INSTRUCTION,
-            safetySettings: safetySettings,
-            tools: [{ googleSearch: {} }] 
-        },
-        history: history || []
-    });
+const IMAGE_SYSTEM_INSTRUCTION = `You are the image generation engine for OxyZen Browser. 
 
-    // ΔΙΟΡΘΩΣΗ: Το payload πρέπει να είναι ένα αντικείμενο Content (role + parts)
-    let parts = [];
-    
-    if (images && images.length > 0) {
-        images.forEach(data => {
-            parts.push({ inlineData: { data: data, mimeType: mimeType || "image/jpeg" } });
-        });
-    }
-    parts.push({ text: prompt });
+CRITICAL RULES:
+1. LANGUAGE: If the user's prompt is not in English, translate the core visual description into English before processing.
+2. TRIGGER: Generate an image ONLY if the user explicitly asks for one (e.g., "φτιάξε μια εικόνα", "generate an image", "σχεδίασε", "create a photo", "draw").
+3. REFUSAL: If the user is just chatting or asking a question without a request to create a visual, DO NOT generate an image. Instead, provide a brief text response in the user's language explaining that you are ready to create an image when they provide a description.
+4. TRANSLATION: Your internal processing for the image generation tool must always be in English to ensure quality.`;
 
-    // Στέλνουμε το αντικείμενο στη μορφή που απαιτεί το ContentUnion
-    const result = await chat.sendMessage({
-        role: "user",
-        parts: parts
-    });
-    
-    return {
-        text: result.text(),
-        token: result.usageMetadata?.totalTokenCount || 0
-    };
-}
+// 2. Endpoint για Πολυτροπική Συνομιλία + μονο κειμενο (Input: Images -> Output: Text)
+app.post('/api/chat', async (req, res) => {
+	const {
+		prompt, images, mimeType, history
+	} = req.body;
 
-async function generateImageLogic(prompt, images, mimeType, aspectRatio = "1:1") {
-    let parts = [];
-    if (images && images.length > 0) {
-        images.forEach(data => {
-            parts.push({ inlineData: { data: data, mimeType: mimeType || "image/jpeg" } });
-        });
-    }
-    parts.push({ text: prompt });
+	const chat = ai.chats.create({
+		model: CHAT_MODEL,
+		history: history || [],
+		config: {
+			systemInstruction: SYSTEM_INSTRUCTION,
+			tools: [{
+				googleSearch: {}
+			}],
+			safetySettings: safety,
+		},
+	});
 
-    const result = await genAI.models.generateContent({
-        model: IMAGE_MODEL,
-        config: {
-            systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
-            safetySettings: safetySettings,
-            responseModalities: ["IMAGE"],
-            generationConfig: {
-                aspectRatio: aspectRatio,
-                personGeneration: "ALLOW"
-            }
-        },
-        contents: [{ role: "user", parts: parts }]
-    });
+	try {
+		if (!images ||!Array.isArray(images)) {
+			const response = await chat.sendMessage({
+				message:prompt
+			});
 
-    const candidate = result.candidates?.[0];
-    const responseParts = candidate?.content?.parts;
+			res.json({
+				text: response.text,
+				token: response.usageMetadata.totalTokenCount
+			});
+		} else {
 
-    if (!responseParts) throw new Error("No image returned");
 
-    const generatedImages = responseParts
-        .filter(part => part.inlineData)
-        .map(part => ({
-            data: part.inlineData.data,
-            mimeType: part.inlineData.mimeType
-        }));
+			const imageParts = images.map(imgBase64 => ({
+				inlineData: {
+					data: imgBase64,
+					mimeType: mimeType || "image/jpeg"
+				}
+			}));
+			const response = await chat.sendMessage({
+				message: [...imageParts, prompt]
+			});
 
-    return { success: true, images: generatedImages, token: result.usageMetadata?.totalTokenCount || 0 };
-}
-
-// --- Endpoints ---
-
-app.post('/api/zen-assistant', async (req, res) => {
-    const { prompt, history, images, mimeType, aspectRatio } = req.body;
-    try {
-        const intent = await getRouteIntent(prompt);
-        if (intent === "IMAGE") {
-            const result = await generateImageLogic(prompt, images, mimeType, aspectRatio);
-            res.json(result);
-        } else {
-            const result = await chatWithLogic(prompt, history, images, mimeType);
-            res.json(result);
-        }
-    } catch (error) {
-        console.error("Error:", error);
-        res.status(500).json({ error: error.message });
-    }
+			res.json({
+				text: response.text,
+				token: response.usageMetadata.totalTokenCount
+			});
+		}
+	
+	} catch (error) {
+		console.error("Zen Error:", error);
+		res.status(500).json({
+			error: "Server error:" + error
+		});
+	}
 });
 
+// 3. Endpoint για Παραγωγή Εικόνας (Image Generation)
+app.post('/api/generate-image', async (req, res) => {
+	const {
+		prompt,
+		images,
+		mimeType,
+		aspectRatio
+	} = req.body;
+
+	if (!prompt) {
+		return res.status(400).json({
+			error: "Το prompt είναι υποχρεωτικό."
+		});
+	}
+
+	try {
+		const contents = [{
+			text: prompt
+		}];
+
+		if (images && Array.isArray(images)) {
+			images.forEach(imgBase64 => {
+				contents.push({
+					inlineData: {
+						data: imgBase64,
+						mimeType: mimeType || "image/jpeg"
+					}
+				});
+			});
+		}
+
+		const response = await ai.models.generateContent({
+			model: IMAGE_MODEL,
+			contents: contents,
+			config: {
+				systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
+				responseModalities: ['IMAGE'],
+				safetySettings: safety,
+				imageConfig: {
+					aspectRatio: aspectRatio || "1:1",
+					personGeneration: "ALLOW"
+				}
+			}
+		});
+
+		// ΔΙΟΡΘΩΣΗ ΣΦΑΛΜΑΤΟΣ: Αφαίρεση του ?. πριν το ; και ενοποίηση των ||
+		const candidate = response.candidates ? response.candidates[0]: null;
+		const parts = candidate?.content?.parts;
+
+		if (!parts || parts.length === 0) {
+			const reason = candidate?.finishReason || "UNKNOWN";
+			const safetyFeedback = response.promptFeedback?.blockReason || "";
+			return res.status(500).json({
+				error: `Το μοντέλο δεν επέστρεψε εικόνα. Αιτία: ${reason}. ${safetyFeedback}`
+			});
+		}
+
+		const generatedImages = parts
+		.filter(part => part.inlineData)
+		.map(part => ({
+			data: part.inlineData.data,
+			mimeType: part.inlineData.mimeType
+		}));
+
+		if (generatedImages.length === 0) {
+			return res.status(500).json({
+				error: "Η απάντηση δεν περιείχε δεδομένα εικόνας."
+			});
+		}
+
+		res.json({
+			success: true,
+			images: generatedImages,
+			token: response.usageMetadata.totalTokenCount
+		});
+
+	} catch (error) {
+		console.error("Image Generation Error:", error);
+		res.status(500).json({
+			error: "Σφάλμα κατά την παραγωγή: " + error.message
+		});
+	}
+});
+
+//4. Endpoint για δωρεαν παραγωγη chat
 app.post('/api/paxsenix-chat', async (req, res) => {
-    const { prompt } = req.body;
-    try {
-        const response = await paxsenix.createChatCompletion({
-            model: 'gpt-3.5-turbo',
-            messages: [{ role: 'system', content: SYSTEM_INSTRUCTION }, { role: 'user', content: prompt }]
-        });
-        res.json({ text: response.text });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+	const {
+                prompt, history
+        } = req.body;
+
+	try {
+		const response = await paxsenix.createChatCompletion({
+			model: 'gpt-3.5-turbo',
+			messages:[
+				{ role: 'system', content: SYSTEM_INSTRUCTION },
+				{ role: 'user', content: prompt }
+			]
+		});
+
+		res.json({
+			text: response.text
+		});
+
+	} catch (error) {
+		res.status(error.status).json({
+			Status: error.status,
+			Error: error.mesage,
+			Data: error.data
+		});
+
+	}
+
 });
 
-app.get('/api/wake', (req, res) => res.json({ status: "online" }));
+app.post('/api/paxsenix-list', async (req, res) => {
+   	try {
+     		// Example 1: List available models
+     		console.log('Listing available models...'); 
+     		const models = await paxsenix.listModels(); 
+     		res.json({
+			text:`Available models: ${models.data.map(model => model.id).join(', ')}`
+		});
+     		console.log('-------------------');
+	} catch (error) {
+		res.status(error).json({
+			error: "No response on getting models:" + error
+		});
+	}
+});
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.post('/api/perchance', async (req, res) => {
+	const {
+		prompt,history
+	} = req.body;
+	const count = 5;
+
+	try {
+        	const response = await fetch(`https://perchance.org/api/generateList.php?generator=${prompt}&count=${count}`);
+
+        	if (!response.ok) {
+          		res.status(response.status).json({
+				error:response.status
+			});
+        	}
+
+        	const data = await response.json();
+
+        	if (data && data.length > 0) {
+			res.json({
+				text: data
+			});
+        	} else {
+			res.status(500).json({
+				error: "No response available"
+			});
+        	}
+	} catch (error) {
+        	res.status(error).json({
+			error: "Error fetching from Perchance:" + error
+		});
+    	}
+});
+
+app.listen(PORT, () => {
+	console.log(`Server running on port ${PORT}`);
+});
+
