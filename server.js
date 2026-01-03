@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
 
-const genAI = new GoogleGenAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 
 // Ρυθμίσεις Ασφαλείας από server(6).js
