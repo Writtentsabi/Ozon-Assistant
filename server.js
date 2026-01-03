@@ -72,146 +72,113 @@ CRITICAL RULES:
 3. REFUSAL: If the user is just chatting or asking a question without a request to create a visual, DO NOT generate an image. Instead, provide a brief text response in the user's language explaining that you are ready to create an image when they provide a description.
 4. TRANSLATION: Your internal processing for the image generation tool must always be in English to ensure quality.`;
 
-// 2. Endpoint για Πολυτροπική Συνομιλία + μονο κειμενο (Input: Images -> Output: Text)
-app.post('/api/chat', async (req, res) => {
-	const {
-		prompt, images, mimeType, history
-	} = req.body;
+//a. Η μεθοδος με την οποια ο Zen αποφασιζει αν θα απαντησει με εικονα η κειμενο
+async function getRouteIntent(prompt) {
+    try {
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-2.5-flash-lite",
+            systemInstruction: "Analyze user intent. If the user explicitly wants to generate, draw, or edit an image, reply ONLY with the word 'IMAGE'. For any other request, question, or chat, reply ONLY with 'TEXT'."
+        });
 
-	const chat = ai.chats.create({
-		model: CHAT_MODEL,
-		history: history || [],
-		config: {
-			systemInstruction: SYSTEM_INSTRUCTION,
-			tools: [{
-				googleSearch: {}
-			}],
-			safetySettings: safety,
-		},
-	});
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text().trim().toUpperCase();
+        
+        // Επιστρέφει "IMAGE" μόνο αν είναι απόλυτα σίγουρο, αλλιώς "TEXT"
+        return responseText.includes("IMAGE")? "IMAGE" : "TEXT";
+    } catch (error) {
+        console.error("Routing Error:", error);
+        return "TEXT"; // Fallback σε κείμενο για ασφάλεια
+    }
+}
 
-	try {
-		if (!images ||!Array.isArray(images)) {
-			const response = await chat.sendMessage({
-				message:prompt
-			});
+//b.Η μεθοδος με την οποια απαντα με κειμενο
+async function chatWithLogic(prompt, history, images, mimeType) {
+    const model = genAI.getGenerativeModel({ 
+        model: CHAT_MODEL,
+        systemInstruction: SYSTEM_INSTRUCTION, // Ο Zen με το monologue
+        tools: 
+    });
 
-			res.json({
-				text: response.text,
-				token: response.usageMetadata.totalTokenCount
-			});
-		} else {
+    const chat = model.startChat({ history: history |
 
+| });
+    
+    let parts = [{ text: prompt }];
+    if (images && images.length > 0) {
+        const imageParts = images.map(data => ({
+            inlineData: { data, mimeType: mimeType |
 
-			const imageParts = images.map(imgBase64 => ({
-				inlineData: {
-					data: imgBase64,
-					mimeType: mimeType || "image/jpeg"
-				}
-			}));
-			const response = await chat.sendMessage({
-				message: [...imageParts, prompt]
-			});
+| "image/jpeg" }
+        }));
+        parts = [...imageParts,...parts];
+    }
 
-			res.json({
-				text: response.text,
-				token: response.usageMetadata.totalTokenCount
-			});
-		}
-	
-	} catch (error) {
-		console.error("Zen Error:", error);
-		res.status(500).json({
-			error: "Server error:" + error
-		});
-	}
+    const result = await chat.sendMessage(parts);
+    return {
+        text: result.response.text(),
+        candidates: result.response.candidates,
+        usage: result.response.usageMetadata
+    };
+}
+
+//c.Η μεθοδος με την οποια απαντα με εικονα
+async function generateImageLogic(prompt, images, mimeType) {
+    const model = genAI.getGenerativeModel({ 
+        model: IMAGE_MODEL,
+        systemInstruction: IMAGE_SYSTEM_INSTRUCTION 
+    });
+
+    let contents = [{ role: "user", parts: [{ text: prompt }] }];
+    if (images && images.length > 0) {
+        images.forEach(data => {
+            contents.parts.push({ inlineData: { data, mimeType: mimeType |
+
+| "image/jpeg" } });
+        });
+    }
+
+    const result = await model.generateContent({
+        contents,
+        generationConfig: { responseModalities: ["IMAGE"] }
+    });
+
+    // Φιλτράρισμα για την εξαγωγή των εικόνων Base64
+    const generatedImages = result.response.candidates.content.parts
+       .filter(part => part.inlineData)
+       .map(part => ({
+            base64: part.inlineData.data,
+            mimeType: part.inlineData.mimeType
+        }));
+
+    return { images: generatedImages, usage: result.response.usageMetadata };
+}
+
+//1.Το endpoint με το οποιο αλληλεπιδρα ο Zen
+app.post('/api/zen-assistant', async (req, res) => {
+    const { prompt, history, images, mimeType } = req.body;
+
+    try {
+        // 1. Ρωτάμε το Lite μοντέλο τι θέλει ο χρήστης (IMAGE ή TEXT)
+        const intent = await getRouteIntent(prompt); 
+        console.log("Zen Decision:", intent);
+
+        if (intent === "IMAGE") {
+            // Καλεί τη λογική της παλιάς σας μεθόδου /api/generate-image
+            // (Χρησιμοποιεί το gemini-2.5-flash-image)
+            const result = await generateImageLogic(prompt, images, mimeType);
+            res.json(result);
+        } else {
+            // Καλεί τη λογική της παλιάς σας μεθόδου /api/chat
+            // (Χρησιμοποιεί το gemini-2.5-flash με Google Search)
+            const result = await chatWithLogic(prompt, history, images, mimeType);
+            res.json(result);
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
-// 3. Endpoint για Παραγωγή Εικόνας (Image Generation)
-app.post('/api/generate-image', async (req, res) => {
-	const {
-		prompt,
-		images,
-		mimeType,
-		aspectRatio
-	} = req.body;
-
-	if (!prompt) {
-		return res.status(400).json({
-			error: "Το prompt είναι υποχρεωτικό."
-		});
-	}
-
-	try {
-		const contents = [{
-			text: prompt
-		}];
-
-		if (images && Array.isArray(images)) {
-			images.forEach(imgBase64 => {
-				contents.push({
-					inlineData: {
-						data: imgBase64,
-						mimeType: mimeType || "image/jpeg"
-					}
-				});
-			});
-		}
-
-		const response = await ai.models.generateContent({
-			model: IMAGE_MODEL,
-			contents: contents,
-			config: {
-				systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
-				responseModalities: ['IMAGE'],
-				safetySettings: safety,
-				imageConfig: {
-					aspectRatio: aspectRatio || "1:1",
-					personGeneration: "ALLOW"
-				}
-			}
-		});
-
-		// ΔΙΟΡΘΩΣΗ ΣΦΑΛΜΑΤΟΣ: Αφαίρεση του ?. πριν το ; και ενοποίηση των ||
-		const candidate = response.candidates ? response.candidates[0]: null;
-		const parts = candidate?.content?.parts;
-
-		if (!parts || parts.length === 0) {
-			const reason = candidate?.finishReason || "UNKNOWN";
-			const safetyFeedback = response.promptFeedback?.blockReason || "";
-			return res.status(500).json({
-				error: `Το μοντέλο δεν επέστρεψε εικόνα. Αιτία: ${reason}. ${safetyFeedback}`
-			});
-		}
-
-		const generatedImages = parts
-		.filter(part => part.inlineData)
-		.map(part => ({
-			data: part.inlineData.data,
-			mimeType: part.inlineData.mimeType
-		}));
-
-		if (generatedImages.length === 0) {
-			return res.status(500).json({
-				error: "Η απάντηση δεν περιείχε δεδομένα εικόνας."
-			});
-		}
-
-		res.json({
-			success: true,
-			images: generatedImages,
-			token: response.usageMetadata.totalTokenCount
-		});
-
-	} catch (error) {
-		console.error("Image Generation Error:", error);
-		res.status(500).json({
-			error: "Σφάλμα κατά την παραγωγή: " + error.message
-		});
-	}
-});
-
-//4. Endpoint για δωρεαν παραγωγη chat
+//2. Endpoint για δωρεαν παραγωγη chat
 app.post('/api/paxsenix-chat', async (req, res) => {
 	const {
                 prompt, history
@@ -241,6 +208,7 @@ app.post('/api/paxsenix-chat', async (req, res) => {
 
 });
 
+//3.Το endpoint με το οποιο εμφανιζει ολα τα διαθεσιμα μοντελα paxsenix
 app.post('/api/paxsenix-list', async (req, res) => {
    	try {
      		// Example 1: List available models
@@ -257,6 +225,7 @@ app.post('/api/paxsenix-list', async (req, res) => {
 	}
 });
 
+//4. Υπο κατασκευη
 app.post('/api/perchance', async (req, res) => {
 	const {
 		prompt,history
@@ -290,7 +259,7 @@ app.post('/api/perchance', async (req, res) => {
     	}
 });
 
-// Endpoint για διατήρηση του server σε εγρήγορση (Keep-alive)
+//5. Endpoint για διατήρηση του server σε εγρήγορση (Keep-alive)
 app.get('/api/wake', (req, res) => {
     res.status(200).json({ 
         status: "online", 
