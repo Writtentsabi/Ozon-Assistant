@@ -1,6 +1,7 @@
-// server.js (Σταθερή Έκδοση με Έξυπνη Δρομολόγηση)
+// server.js (Προσαρμοσμένο για @google/genai SDK)
 import 'dotenv/config';
 import express from 'express';
+// Βεβαιώσου ότι έχεις κάνει: npm install @google/genai
 import {
 	GoogleGenAI
 } from "@google/genai";
@@ -11,14 +12,19 @@ import PaxSenixAI from '@paxsenix/ai';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
 
-const genAI = new GoogleGenAI({apiKey: process.env.GEMINI_API_KEY});
+// Προσοχή: Χρησιμοποίησε ονόματα μοντέλων που υποστηρίζονται (π.χ. gemini-2.0-flash-exp)
+const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash-exp";
+const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.0-flash-exp";
+
+// 1. Αρχικοποίηση του Client (New SDK Style)
+const genAI = new GoogleGenAI( {
+	apiKey: process.env.GEMINI_API_KEY
+});
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 
-// Ρυθμίσεις Ασφαλείας από server(6).js
-const safety = [{
+// Ρυθμίσεις Ασφαλείας (Προσαρμοσμένες για το config object του νέου SDK)
+const safetySettings = [{
 	category: "HARM_CATEGORY_HARASSMENT",
 	threshold: "BLOCK_NONE"
 },
@@ -58,16 +64,24 @@ const IMAGE_SYSTEM_INSTRUCTION = `You are the image generation engine for OxyZen
 3. REFUSAL: If no visual request, explain you are ready to create images.
 4. TRANSLATION: Internal processing in English.`;
 
-// --- Helper Logic Functions ---
+// --- Helper Logic Functions (New SDK Syntax) ---
 
 async function getRouteIntent(prompt) {
 	try {
-		const model = genAI.getGenerativeModel({
-			model: "gemini-2.5-flash-lite",
-			systemInstruction: "Analyze user intent. If the user explicitly wants to generate, draw, or edit an image, reply ONLY with 'IMAGE'. Else reply ONLY with 'TEXT'."
+		// Στο νέο SDK καλούμε απευθείας το models.generateContent
+		const result = await genAI.models.generateContent({
+			model: "gemini-2.0-flash-exp", // Χρήση ελαφρύ μοντέλου για routing
+			config: {
+				systemInstruction: "Analyze user intent. If the user explicitly wants to generate, draw, or edit an image, reply ONLY with 'IMAGE'. Else reply ONLY with 'TEXT'."
+			},
+			contents: [{
+				role: 'user', parts: [{
+					text: prompt
+				}]
+			}]
 		});
-		const result = await model.generateContent(prompt);
-		const responseText = result.response.text().trim().toUpperCase();
+
+		const responseText = result.text ? result.text().trim().toUpperCase(): "TEXT";
 		return responseText.includes("IMAGE") ? "IMAGE": "TEXT";
 	} catch (error) {
 		console.error("Routing Error:", error);
@@ -76,79 +90,91 @@ async function getRouteIntent(prompt) {
 }
 
 async function chatWithLogic(prompt, history, images, mimeType) {
-	const model = genAI.getGenerativeModel({
+	// 2. Δημιουργία Chat Session με το νέο SDK
+	const chat = genAI.chats.create({
 		model: CHAT_MODEL,
-		systemInstruction: SYSTEM_INSTRUCTION,
-		safetySettings: safety,
-		tools: [{
-			googleSearch: {}
-		}]
-	});
-
-	const chat = model.startChat({
+		config: {
+			systemInstruction: SYSTEM_INSTRUCTION,
+			safetySettings: safetySettings,
+			// Google Search tool integration (αν υποστηρίζεται από το μοντέλο στο νέο SDK)
+			tools: [{
+				googleSearch: {}
+			}]
+		},
 		history: history || []
 	});
 
 	let messagePayload;
 	if (images && images.length > 0) {
+		// Μορφοποίηση εικόνας για το νέο SDK
 		const imageParts = images.map(data => ({
 			inlineData: {
-				data, mimeType: mimeType || "image/jpeg"
+				data: data,
+				mimeType: mimeType || "image/jpeg"
 			}
 		}));
-		messagePayload = [...imageParts,
-			prompt];
+		messagePayload = [
+			...imageParts,
+			{
+				text: prompt
+			}];
 	} else {
-		messagePayload = prompt;
+		messagePayload = [{
+			text: prompt
+		}];
 	}
 
-	const result = await chat.sendMessage(messagePayload);
+	// Αποστολή μηνύματος
+	const result = await chat.send(messagePayload);
+
 	return {
-		text: result.response.text(),
-		token: result.response.usageMetadata.totalTokenCount
+		text: result.text(),
+		token: result.usageMetadata?.totalTokenCount || 0
 	};
 }
 
 async function generateImageLogic(prompt, images, mimeType, aspectRatio = "1:1") {
-	const model = genAI.getGenerativeModel({
-		model: IMAGE_MODEL,
-		systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
-		safetySettings: safety
-	});
-
-	let contents = [{
-		role: "user",
-		parts: [{
-			text: prompt
-		}]
+	// 3. Image Generation Logic (χρησιμοποιώντας το Gemini multimodal capabilities)
+	let parts = [{
+		text: prompt
 	}];
+
 	if (images && images.length > 0) {
 		images.forEach(data => {
-			contents[0].parts.push({
+			parts.push({
 				inlineData: {
-					data, mimeType: mimeType || "image/jpeg"
+					data: data,
+					mimeType: mimeType || "image/jpeg"
 				}
 			});
 		});
 	}
 
-	const result = await model.generateContent({
-		contents,
-		generationConfig: {
-			responseModalities: ["IMAGE"],
-			aspectRatio: aspectRatio,
-			personGeneration: "ALLOW"
-		}
+	const result = await genAI.models.generateContent({
+		model: IMAGE_MODEL,
+		config: {
+			systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
+			safetySettings: safetySettings,
+			responseModalities: ["IMAGE"], // Κρίσιμο για να ζητήσουμε εικόνα
+			generationConfig: {
+				// Κάποιες παράμετροι μπαίνουν εδώ ανάλογα την έκδοση
+				responseModalities: ["IMAGE"]
+			}
+		},
+		contents: [{
+			role: "user", parts: parts
+		}]
 	});
 
-	const candidate = result.response.candidates ? result.response.candidates[0]: null;
-	const parts = candidate?.content?.parts;
+	// Χειρισμός απάντησης στο νέο SDK
+	const candidate = result.candidates ? result.candidates[0]: null;
+	const responseParts = candidate?.content?.parts;
 
-	if (!parts || parts.length === 0) {
-		throw new Error(`No image returned. Reason: ${candidate?.finishReason}`);
+	if (!responseParts || responseParts.length === 0) {
+		throw new Error(`No image returned. Finish Reason: ${candidate?.finishReason}`);
 	}
 
-	const generatedImages = parts
+	const generatedImages = responseParts
 	.filter(part => part.inlineData)
 	.map(part => ({
 		data: part.inlineData.data,
@@ -158,7 +184,7 @@ async function generateImageLogic(prompt, images, mimeType, aspectRatio = "1:1")
 	return {
 		success: true,
 		images: generatedImages,
-		token: result.response.usageMetadata.totalTokenCount
+		token: result.usageMetadata?.totalTokenCount || 0
 	};
 }
 
@@ -191,6 +217,7 @@ app.post('/api/zen-assistant', async (req, res) => {
 	}
 });
 
+// Paxsenix Logic παραμένει ίδια (αφού είναι άλλη βιβλιοθήκη)
 app.post('/api/paxsenix-chat', async (req, res) => {
 	const {
 		prompt
