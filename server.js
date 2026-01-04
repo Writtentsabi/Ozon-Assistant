@@ -214,6 +214,15 @@ app.post('/api/perchance', async (req, res) => {
 	}
 });
 
+// Endpoint για το "ξύπνημα" του server (Keep-alive / Health Check)
+app.get('/api/wakeup', (req, res) => {
+	res.status(200).json({ 
+		status: "online", 
+		message: "Zen Server is awake and ready",
+		timestamp: new Date().toISOString()
+	});
+});
+
 app.listen(PORT, () => {
 	console.log(`Server running on port ${PORT}`);
 });
