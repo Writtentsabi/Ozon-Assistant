@@ -117,8 +117,7 @@ app.post('/api/chat', async (req, res) => {
 					responseModalities: ['IMAGE'],
 					safetySettings: safety,
 					imageConfig: {
-						aspectRatio: aspectRatio || "1:1",
-						personGeneration: "ALLOW"
+						aspectRatio: aspectRatio || "1:1"
 					}
 				}
 			});
