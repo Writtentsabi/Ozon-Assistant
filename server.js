@@ -161,8 +161,13 @@ app.post('/api/chat', async (req, res) => {
 				mimeType: part.inlineData.mimeType
 			}));
 
+			// Αναζήτηση για το κείμενο που συνοδεύει την εικόνα
+			const textPart = parts.find(part => part.text);
+			const responseText = textPart ? textPart.text: "";
+
 			res.json({
 				success: true,
+				text: responseText, // Επιστροφή του κειμένου
 				images: generatedImages,
 				token: response.usageMetadata.totalTokenCount
 			});
