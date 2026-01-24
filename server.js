@@ -96,11 +96,26 @@ app.post('/api/chat', async (req, res) => {
 
 		// 2. Εκτέλεση βάσει της απόφασης
 		if (decision.includes("IMAGE")) {
-			// Λογική Παραγωγής Εικόνας (όπως στο server 6)
-			const contents = [{ text: prompt }];
+		// 2. Εκτέλεση βάσει της απόφασης
+		if (decision.includes("IMAGE")) {
+			// Δημιουργία περιεχομένου που περιλαμβάνει το ιστορικό για context
+			const contents = [];
+
+			// Προσθήκη ιστορικού (αν υπάρχει) για να έχει το μοντέλο το context της συζήτησης
+			if (history && Array.isArray(history)) {
+				history.forEach(msg => {
+					contents.push({
+						role: msg.role,
+						parts: [{ text: msg.parts[0].text }]
+					});
+				});
+			}
+
+			// Προσθήκη του τρέχοντος prompt και τυχόν εικόνων εισόδου
+			const currentParts = [{ text: prompt }];
 			if (images && Array.isArray(images)) {
 				images.forEach(imgBase64 => {
-					contents.push({
+					currentParts.push({
 						inlineData: {
 							data: imgBase64,
 							mimeType: mimeType || "image/jpeg"
@@ -109,9 +124,14 @@ app.post('/api/chat', async (req, res) => {
 				});
 			}
 
+			contents.push({
+				role: "user",
+				parts: currentParts
+			});
+
 			const response = await ai.models.generateContent({
 				model: IMAGE_MODEL,
-				contents: contents,
+				contents: contents, // Τώρα περιλαμβάνει όλο το ιστορικό
 				config: {
 					systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
 					responseModalities: ['IMAGE'],
