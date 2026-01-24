@@ -15,7 +15,7 @@ const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
 const ROUTER_MODEL = "gemini-2.5-flash-lite";
 
-const ai = new GoogleGenAI({
+const ai = new GoogleGenAI( {
 	apiKey: process.env.GEMINI_API_KEY
 });
 
@@ -26,18 +26,18 @@ const safety = [{
 	category: "HARM_CATEGORY_HARASSMENT",
 	threshold: "BLOCK_NONE",
 },
-{
-	category: "HARM_CATEGORY_HATE_SPEECH",
-	threshold: "BLOCK_NONE",
-},
-{
-	category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-	threshold: "BLOCK_NONE",
-},
-{
-	category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-	threshold: "BLOCK_NONE",
-},
+	{
+		category: "HARM_CATEGORY_HATE_SPEECH",
+		threshold: "BLOCK_NONE",
+	},
+	{
+		category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+		threshold: "BLOCK_NONE",
+	},
+	{
+		category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+		threshold: "BLOCK_NONE",
+	},
 ];
 
 app.use(express.static('public'));
@@ -65,7 +65,7 @@ CORE RULE: Every response MUST consist of two distinct sections.
 - IMPORTANT: Do not include <html>, <head>, or <body> tags.
 - Ensure the tone matches the "OxyZen Browser" brand: calm, efficient, and user-centric.`;
 
-const IMAGE_SYSTEM_INSTRUCTION = `You are the image generation engine for OxyZen Browser. 
+const IMAGE_SYSTEM_INSTRUCTION = `You are the image generation engine for OxyZen Browser.
 
 CRITICAL RULES:
 1. LANGUAGE: If the user's prompt is not in English, translate the core visual description into English before processing.
@@ -85,17 +85,15 @@ app.post('/api/chat', async (req, res) => {
 			model: ROUTER_MODEL,
 			contents: [{
 				parts: [{
-					text: `Analyze the user input: "${prompt}". 
-                    If the user wants to generate, draw, or create an image/visual, reply ONLY with "IMAGE". 
-                    Otherwise, reply ONLY with "TEXT".`
+					text: `Analyze the user input: "${prompt}".
+					If the user wants to generate, draw, or create an image/visual, reply ONLY with "IMAGE".
+					Otherwise, reply ONLY with "TEXT".`
 				}]
 			}]
 		});
 
 		const decision = routerResult.text.trim().toUpperCase();
 
-		// 2. Εκτέλεση βάσει της απόφασης
-		if (decision.includes("IMAGE")) {
 		// 2. Εκτέλεση βάσει της απόφασης
 		if (decision.includes("IMAGE")) {
 			// Δημιουργία περιεχομένου που περιλαμβάνει το ιστορικό για context
@@ -106,13 +104,17 @@ app.post('/api/chat', async (req, res) => {
 				history.forEach(msg => {
 					contents.push({
 						role: msg.role,
-						parts: [{ text: msg.parts[0].text }]
+						parts: [{
+							text: msg.parts[0].text
+						}]
 					});
 				});
 			}
 
 			// Προσθήκη του τρέχοντος prompt και τυχόν εικόνων εισόδου
-			const currentParts = [{ text: prompt }];
+			const currentParts = [{
+				text: prompt
+			}];
 			if (images && Array.isArray(images)) {
 				images.forEach(imgBase64 => {
 					currentParts.push({
@@ -142,26 +144,29 @@ app.post('/api/chat', async (req, res) => {
 				}
 			});
 
-			const candidate = response.candidates ? response.candidates[0] : null;
+			const candidate = response.candidates ? response.candidates[0]: null;
 			const parts = candidate?.content?.parts;
 
 			if (!parts || parts.length === 0) {
 				const reason = candidate?.finishReason || "UNKNOWN";
-				return res.status(500).json({ error: `Image generation failed. Reason: ${reason}` });
+				return res.status(500).json({
+					error: `Image generation failed. Reason: ${reason}`
+				});
 			}
 
 			const generatedImages = parts
-				.filter(part => part.inlineData)
-				.map(part => ({
-					data: part.inlineData.data,
-					mimeType: part.inlineData.mimeType
-				}));
+			.filter(part => part.inlineData)
+			.map(part => ({
+				data: part.inlineData.data,
+				mimeType: part.inlineData.mimeType
+			}));
 
 			res.json({
 				success: true,
 				images: generatedImages,
 				token: response.usageMetadata.totalTokenCount
 			});
+
 
 		} else {
 			// Λογική Πολυτροπικής Συνομιλίας (όπως στο server 6)
@@ -170,14 +175,18 @@ app.post('/api/chat', async (req, res) => {
 				history: history || [],
 				config: {
 					systemInstruction: SYSTEM_INSTRUCTION,
-					tools: [{ googleSearch: {} }],
+					tools: [{
+						googleSearch: {}
+					}],
 					safetySettings: safety,
 				},
 			});
 
 			let response;
 			if (!images || !Array.isArray(images)) {
-				response = await chat.sendMessage({ message: prompt });
+				response = await chat.sendMessage({
+					message: prompt
+				});
 			} else {
 				const imageParts = images.map(imgBase64 => ({
 					inlineData: {
@@ -185,7 +194,9 @@ app.post('/api/chat', async (req, res) => {
 						mimeType: mimeType || "image/jpeg"
 					}
 				}));
-				response = await chat.sendMessage({ message: [...imageParts, prompt] });
+				response = await chat.sendMessage({
+					message: [...imageParts, prompt]
+				});
 			}
 
 			res.json({
@@ -204,39 +215,55 @@ app.post('/api/chat', async (req, res) => {
 
 // Endpoint PaxSenix (Από server 6)
 app.post('/api/paxsenix-chat', async (req, res) => {
-	const { prompt } = req.body;
+	const {
+		prompt
+	} = req.body;
 	try {
 		const response = await paxsenix.createChatCompletion({
 			model: 'gpt-3.5-turbo',
-			messages: [
-				{ role: 'system', content: SYSTEM_INSTRUCTION },
-				{ role: 'user', content: prompt }
-			]
+			messages: [{
+				role: 'system', content: SYSTEM_INSTRUCTION
+			},
+				{
+					role: 'user', content: prompt
+				}]
 		});
-		res.json({ text: response.text });
+		res.json({
+			text: response.text
+		});
 	} catch (error) {
-		res.status(500).json({ error: error.message });
+		res.status(500).json({
+			error: error.message
+		});
 	}
 });
 
 // Endpoint Perchance (Από server 6)
 app.post('/api/perchance', async (req, res) => {
-	const { prompt } = req.body;
+	const {
+		prompt
+	} = req.body;
 	const count = 5;
 	try {
 		const response = await fetch(`https://perchance.org/api/generateList.php?generator=${prompt}&count=${count}`);
-		if (!response.ok) return res.status(response.status).json({ error: response.status });
+		if (!response.ok) return res.status(response.status).json({
+			error: response.status
+		});
 		const data = await response.json();
-		res.json({ text: data });
+		res.json({
+			text: data
+		});
 	} catch (error) {
-		res.status(500).json({ error: "Error fetching from Perchance: " + error.message });
+		res.status(500).json({
+			error: "Error fetching from Perchance: " + error.message
+		});
 	}
 });
 
 // Endpoint για το "ξύπνημα" του server (Keep-alive / Health Check)
 app.get('/api/wakeup', (req, res) => {
-	res.status(200).json({ 
-		status: "online", 
+	res.status(200).json({
+		status: "online",
 		message: "Zen Server is awake and ready",
 		timestamp: new Date().toISOString()
 	});
