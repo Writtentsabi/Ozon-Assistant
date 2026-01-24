@@ -179,7 +179,7 @@ app.post('/api/chat', async (req, res) => {
 					}],
 					safetySettings: safety,
 					// ΠΡΟΣΘΗΚΗ: Ζητάμε από το μοντέλο να παράγει και κείμενο και ήχο
-					responseModalities: ["text", "audio"],
+					responseModalities: ['TEXT', 'AUDIO'],
 				},
 			});
 
