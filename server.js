@@ -136,7 +136,7 @@ app.post('/api/chat', async (req, res) => {
 				contents: contents, // Τώρα περιλαμβάνει όλο το ιστορικό
 				config: {
 					systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
-					responseModalities: ['IMAGE'],
+					responseModalities: ['TEXT', 'IMAGE'],
 					safetySettings: safety,
 					imageConfig: {
 						aspectRatio: aspectRatio || "1:1"
