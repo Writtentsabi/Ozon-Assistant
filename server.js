@@ -167,9 +167,8 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata.totalTokenCount
 			});
 
-
 		} else {
-			// Λογική Πολυτροπικής Συνομιλίας (όπως στο server 6)
+			// Λογική Πολυτροπικής Συνομιλίας με προσθήκη AUDIO
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
@@ -179,10 +178,13 @@ app.post('/api/chat', async (req, res) => {
 						googleSearch: {}
 					}],
 					safetySettings: safety,
+					// ΠΡΟΣΘΗΚΗ: Ζητάμε από το μοντέλο να παράγει και κείμενο και ήχο
+					responseModalities: ["text", "audio"],
 				},
 			});
 
 			let response;
+			// (Το υπόλοιπο sendMessage παραμένει ίδιο)
 			if (!images || !Array.isArray(images)) {
 				response = await chat.sendMessage({
 					message: prompt
@@ -190,8 +192,7 @@ app.post('/api/chat', async (req, res) => {
 			} else {
 				const imageParts = images.map(imgBase64 => ({
 					inlineData: {
-						data: imgBase64,
-						mimeType: mimeType || "image/jpeg"
+						data: imgBase64, mimeType: mimeType || "image/jpeg"
 					}
 				}));
 				response = await chat.sendMessage({
@@ -199,11 +200,18 @@ app.post('/api/chat', async (req, res) => {
 				});
 			}
 
+			// Εξαγωγή του ήχου από τα parts της απάντησης
+			const audioPart = response.candidates[0].content.parts.find(part => part.inlineData);
+
 			res.json({
 				text: response.text,
+				// Επιστρέφουμε το base64 audio data και το mimeType (συνήθως audio/pcm)
+				audio: audioPart ? audioPart.inlineData.data: null,
+				audioMimeType: audioPart ? audioPart.inlineData.mimeType: null,
 				token: response.usageMetadata.totalTokenCount
 			});
 		}
+
 
 	} catch (error) {
 		console.error("Zen Unified Error:", error);
