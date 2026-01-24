@@ -168,7 +168,7 @@ app.post('/api/chat', async (req, res) => {
 			});
 
 		} else {
-			// Λογική Πολυτροπικής Συνομιλίας με προσθήκη AUDIO
+			// Λογική Πολυτροπικής Συνομιλίας
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
@@ -178,8 +178,7 @@ app.post('/api/chat', async (req, res) => {
 						googleSearch: {}
 					}],
 					safetySettings: safety,
-					// ΠΡΟΣΘΗΚΗ: Ζητάμε από το μοντέλο να παράγει και κείμενο και ήχο
-					responseModalities: ['TEXT', 'AUDIO'],
+					responseModalities: ['TEXT']
 				},
 			});
 
@@ -200,14 +199,8 @@ app.post('/api/chat', async (req, res) => {
 				});
 			}
 
-			// Εξαγωγή του ήχου από τα parts της απάντησης
-			const audioPart = response.candidates[0].content.parts.find(part => part.inlineData);
-
 			res.json({
 				text: response.text,
-				// Επιστρέφουμε το base64 audio data και το mimeType (συνήθως audio/pcm)
-				audio: audioPart ? audioPart.inlineData.data: null,
-				audioMimeType: audioPart ? audioPart.inlineData.mimeType: null,
 				token: response.usageMetadata.totalTokenCount
 			});
 		}
