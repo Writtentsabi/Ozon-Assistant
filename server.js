@@ -70,7 +70,9 @@ app.post('/api/chat', async (req, res) => {
 			model: ROUTER_MODEL,
 			contents: [{
 				parts: [{
-					text: `Analyze: "${prompt}". Reply ONLY "IMAGE" or "TEXT".`
+					text: `Analyze the user input: "${prompt}".
+					If the user wants to generate, draw, or create an image/visual, reply ONLY with "IMAGE".
+					Otherwise, reply ONLY with "TEXT".`
 				}]
 			}]
 		});
@@ -138,7 +140,7 @@ app.post('/api/chat', async (req, res) => {
 
 			// ΕΞΑΓΩΓΗ ΚΕΙΜΕΝΟΥ (Αναζητάμε το part που έχει text)
 			const textPart = parts.find(p => p.text);
-			const responseText = textPart ? textPart.text: "<div class=\"thought\">No thoughts provided.</div><p>Ορίστε η εικόνα σας!</p>";
+			const responseText = textPart ? textPart.text: "<div class=\"thought\">No thoughts provided.</div><p>Here is your requested image:</p>";
 
 			res.json({
 				success: true,
