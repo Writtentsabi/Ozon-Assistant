@@ -119,7 +119,7 @@ app.post('/api/chat', async (req, res) => {
 				contents: contents,
 				config: {
 					systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
-					responseModalities: ['IMAGE','TEXT'],
+					responseModalities: ['IMAGE'],
 					safetySettings: safety,
 					imageConfig: {
 						aspectRatio: aspectRatio || "1:1"
