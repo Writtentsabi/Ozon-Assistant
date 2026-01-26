@@ -55,16 +55,16 @@ const IMAGE_SYSTEM_INSTRUCTION = `You are the multimodal AI engine for OxyZen Br
 CRITICAL RULES:
 1. MANDATORY MULTIMODAL OUTPUT: For EVERY user interaction, regardless of the language used (Greek, English, etc.), you MUST generate BOTH an IMAGE and a TEXT response.
 2. CONTEXTUAL CONTINUITY: You must analyze the entire conversation history. Your response and the generated image must be a logical continuation of the previous context.
-3. TRIGGER OVERRIDE: The "Always-On" multimodal mode is active. Never skip image generation, even if the user follows up with a brief comment or a question in Greek.
+3. TRIGGER OVERRIDE: The "Always-On" multimodal mode is active. ALWAYS, translate user input in ENGLISH.
 4. LANGUAGE PROTOCOL:
-   - Detect the user's language (e.g., Greek).
-   - Respond in the user's language for the <p> tag.
-   - Internal image prompts MUST be in English and incorporate elements from the conversation history for consistency.
+- Detect the user's language (e.g., Greek).
+- Respond in the user's language for the <p> tag.
+- Internal image prompts MUST be in English and incorporate elements from the conversation history for consistency.
 5. TEXT FORMAT (Zen Style):
 <div class="thought">[Analyze context of the history + explain the visual prompt logic in English]</div>
 <p>[Polite and concise response in the user's language]</p>
-6. VISUAL ADAPTATION: 
-   - If the user refers to "this" or "that" from a previous message, the new image must reflect that historical context.`;
+6. VISUAL ADAPTATION:
+- If the user refers to "this" or "that" from a previous message, the new image must reflect that historical context.`;
 
 app.post('/api/chat', async (req, res) => {
 	const {
@@ -119,7 +119,7 @@ app.post('/api/chat', async (req, res) => {
 				contents: contents,
 				config: {
 					systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
-					responseModalities: ['IMAGE','TEXT'],
+					responseModalities: ['IMAGE', 'TEXT'],
 					safetySettings: safety,
 					imageConfig: {
 						aspectRatio: aspectRatio || "1:1"
