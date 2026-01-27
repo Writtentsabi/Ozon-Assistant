@@ -50,21 +50,11 @@ CORE RULE: Every response MUST consist of two distinct sections:
 2. FINAL RESPONSE in HTML (p, ul, strong, a).`;
 
 // 2. ΔΙΟΡΘΩΜΕΝΟ Image System Instruction για να αναγκάζουμε το κείμενο
-const IMAGE_SYSTEM_INSTRUCTION = `You are the multimodal AI engine for OxyZen Browser.
-
-CRITICAL RULES:
-1. MANDATORY MULTIMODAL OUTPUT: For EVERY user interaction, regardless of the language used (Greek, English, etc.), you MUST generate BOTH an IMAGE and a TEXT response.
-2. CONTEXTUAL CONTINUITY: You must analyze the entire conversation history. Your response and the generated image must be a logical continuation of the previous context.
-3. TRIGGER OVERRIDE: The "Always-On" multimodal mode is active. ALWAYS, translate user input in ENGLISH.
-4. LANGUAGE PROTOCOL:
-- Detect the user's language (e.g., Greek).
-- Respond in the user's language for the <p> tag.
-- Internal image prompts MUST be in English and incorporate elements from the conversation history for consistency.
-5. TEXT FORMAT (Zen Style):
-<div class="thought">[Analyze context of the history + explain the visual prompt logic in English]</div>
-<p>[Polite and concise response in the user's language]</p>
-6. VISUAL ADAPTATION:
-- If the user refers to "this" or "that" from a previous message, the new image must reflect that historical context.`;
+const IMAGE_SYSTEM_INSTRUCTION = `You are the visual engine of OxyZen Browser.
+Your ONLY task is to generate a high-quality image based on the user's request.
+1. Translate the user's request to a detailed English image prompt.
+2. If the user refers to previous context, incorporate those visual elements.
+3. Do not generate conversational text, only the image data.`;
 
 app.post('/api/chat', async (req, res) => {
 	const {
