@@ -1,4 +1,4 @@
-// server.js (Πλήρως Ενοποιημένη Έκδοση)
+// server.js (Πλήρως Ενοποιημένη Έκδοση με Gemini 2.5 Flash-Lite Router)
 import 'dotenv/config';
 import express from 'express';
 import {
@@ -18,23 +18,25 @@ const ROUTER_MODEL = "gemini-2.5-flash-lite";
 const ai = new GoogleGenAI( {
 	apiKey: process.env.GEMINI_API_KEY
 });
+
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 
+// Ρυθμίσεις Ασφαλείας (Safety Settings) - Από server (6).js
 const safety = [{
 	category: "HARM_CATEGORY_HARASSMENT",
-	threshold: "BLOCK_NONE"
+	threshold: "BLOCK_NONE",
 },
 	{
 		category: "HARM_CATEGORY_HATE_SPEECH",
-		threshold: "BLOCK_NONE"
+		threshold: "BLOCK_NONE",
 	},
 	{
 		category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-		threshold: "BLOCK_NONE"
+		threshold: "BLOCK_NONE",
 	},
 	{
 		category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-		threshold: "BLOCK_NONE"
+		threshold: "BLOCK_NONE",
 	},
 ];
 
@@ -43,25 +45,42 @@ app.use(express.json({
 	limit: '50mb'
 }));
 
-// 1. Το κλασικό System Instruction για το Chat
+// System Instructions - Από server (6).js
 const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for the OxyZen Browser.
-CORE RULE: Every response MUST consist of two distinct sections:
-1. <div class="thought">...your reasoning...</div>
-2. FINAL RESPONSE in HTML (p, ul, strong, a).`;
+An app uploaded also on Play Store.
 
-// 2. ΔΙΟΡΘΩΜΕΝΟ Image System Instruction για να αναγκάζουμε το κείμενο
-const IMAGE_SYSTEM_INSTRUCTION = `You are the visual engine of OxyZen Browser.
-Your ONLY task is to generate a high-quality image based on the user's request.
-1. Translate the user's request to a detailed English image prompt.
-2. If the user refers to previous context, incorporate those visual elements.
-3. Do not generate conversational text, only the image data.`;
+CORE RULE: Every response MUST consist of two distinct sections.
 
+1. INTERNAL MONOLOGUE (The "Thought" process):
+- You must start every response with a <div class="thought"> tag.
+- In this section, analyze the user's intent, the context of the conversation, and your plan for the response.
+- Reflect on potential nuances, tone requirements, or specific information needed from the user's prompt.
+- This is your private reasoning space. Keep it analytical and objective.
+- Close this section with </div>.
+
+2. FINAL RESPONSE:
+- Immediately after the thought block, provide your actual response to the user.
+- Use structured HTML tags (e.g., <p>, <ul>, <strong>, <a>).
+- Maintain a helpful, Zen-like, and professional personality.
+- IMPORTANT: Do not include <html>, <head>, or <body> tags.
+- Ensure the tone matches the "OxyZen Browser" brand: calm, efficient, and user-centric.`;
+
+const IMAGE_SYSTEM_INSTRUCTION = `You are the image generation engine for OxyZen Browser.
+
+CRITICAL RULES:
+1. LANGUAGE: If the user's prompt is not in English, translate the core visual description into English before processing.
+2. TRIGGER: Generate an image ONLY if the user explicitly asks for one (e.g., "φτιάξε μια εικόνα", "generate an image", "σχεδίασε", "create a photo", "draw").
+3. REFUSAL: If the user is just chatting or asking a question without a request to create a visual, DO NOT generate an image. Instead, provide a brief text response in the user's language explaining that you are ready to create an image when they provide a description.
+4. TRANSLATION: Your internal processing for the image generation tool must always be in English to ensure quality.`;
+
+// ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat
 app.post('/api/chat', async (req, res) => {
 	const {
 		prompt, images, mimeType, history, aspectRatio
 	} = req.body;
 
 	try {
+		// 1. Φάση Δρομολόγησης (Intelligent Routing) χρησιμοποιώντας ai.models.generateContent
 		const routerResult = await ai.models.generateContent({
 			model: ROUTER_MODEL,
 			contents: [{
@@ -75,18 +94,24 @@ app.post('/api/chat', async (req, res) => {
 
 		const decision = routerResult.text.trim().toUpperCase();
 
+		// 2. Εκτέλεση βάσει της απόφασης
 		if (decision.includes("IMAGE")) {
+			// Δημιουργία περιεχομένου που περιλαμβάνει το ιστορικό για context
 			const contents = [];
+
+			// Προσθήκη ιστορικού (αν υπάρχει) για να έχει το μοντέλο το context της συζήτησης
 			if (history && Array.isArray(history)) {
 				history.forEach(msg => {
 					contents.push({
-						role: msg.role, parts: [{
+						role: msg.role,
+						parts: [{
 							text: msg.parts[0].text
 						}]
 					});
 				});
 			}
 
+			// Προσθήκη του τρέχοντος prompt και τυχόν εικόνων εισόδου
 			const currentParts = [{
 				text: prompt
 			}];
@@ -94,19 +119,21 @@ app.post('/api/chat', async (req, res) => {
 				images.forEach(imgBase64 => {
 					currentParts.push({
 						inlineData: {
-							data: imgBase64, mimeType: mimeType || "image/jpeg"
+							data: imgBase64,
+							mimeType: mimeType || "image/jpeg"
 						}
 					});
 				});
 			}
 
 			contents.push({
-				role: "user", parts: currentParts
+				role: "user",
+				parts: currentParts
 			});
 
 			const response = await ai.models.generateContent({
 				model: IMAGE_MODEL,
-				contents: contents,
+				contents: contents, // Τώρα περιλαμβάνει όλο το ιστορικό
 				config: {
 					systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
 					responseModalities: ['IMAGE'],
@@ -121,12 +148,12 @@ app.post('/api/chat', async (req, res) => {
 			const parts = candidate?.content?.parts;
 
 			if (!parts || parts.length === 0) {
+				const reason = candidate?.finishReason || "UNKNOWN";
 				return res.status(500).json({
-					error: "Image generation failed."
+					error: `Image generation failed. Reason: ${reason}`
 				});
 			}
 
-			// ΕΞΑΓΩΓΗ ΕΙΚΟΝΩΝ
 			const generatedImages = parts
 			.filter(part => part.inlineData)
 			.map(part => ({
@@ -134,18 +161,15 @@ app.post('/api/chat', async (req, res) => {
 				mimeType: part.inlineData.mimeType
 			}));
 
-			// ΕΞΑΓΩΓΗ ΚΕΙΜΕΝΟΥ (Αναζητάμε το part που έχει text)
-			const responseText = "<div class=\"thought\">No thoughts provided.</div><p>Here is your requested image:</p>";
-
 			res.json({
 				success: true,
-				text: responseText, // Τώρα θα περιέχει το κείμενο
 				images: generatedImages,
 				token: response.usageMetadata.totalTokenCount
 			});
 
+
 		} else {
-			// Chat Logic
+			// Λογική Πολυτροπικής Συνομιλίας (όπως στο server 6)
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
@@ -155,7 +179,6 @@ app.post('/api/chat', async (req, res) => {
 						googleSearch: {}
 					}],
 					safetySettings: safety,
-					responseModalities: ['TEXT']
 				},
 			});
 
@@ -167,7 +190,8 @@ app.post('/api/chat', async (req, res) => {
 			} else {
 				const imageParts = images.map(imgBase64 => ({
 					inlineData: {
-						data: imgBase64, mimeType: mimeType || "image/jpeg"
+						data: imgBase64,
+						mimeType: mimeType || "image/jpeg"
 					}
 				}));
 				response = await chat.sendMessage({
@@ -180,6 +204,7 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata.totalTokenCount
 			});
 		}
+
 	} catch (error) {
 		console.error("Zen Unified Error:", error);
 		res.status(500).json({
@@ -187,10 +212,6 @@ app.post('/api/chat', async (req, res) => {
 		});
 	}
 });
-
-// ... (Rest of the endpoints: paxsenix, perchance, wakeup)
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
 
 // Endpoint PaxSenix (Από server 6)
 app.post('/api/paxsenix-chat', async (req, res) => {
