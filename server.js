@@ -145,7 +145,7 @@ app.post('/api/chat', async (req, res) => {
 			}));
 
 			// ΕΞΑΓΩΓΗ ΚΕΙΜΕΝΟΥ (Αναζητάμε το part που έχει text)
-			const responseText = textPart.text: "<div class=\"thought\">No thoughts provided.</div><p>Here is your requested image:</p>";
+			const responseText = "<div class=\"thought\">No thoughts provided.</div><p>Here is your requested image:</p>";
 
 			res.json({
 				success: true,
