@@ -119,7 +119,7 @@ app.post('/api/chat', async (req, res) => {
 				contents: contents,
 				config: {
 					systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
-					responseModalities: ['IMAGE', 'TEXT'],
+					responseModalities: ['IMAGE'],
 					safetySettings: safety,
 					imageConfig: {
 						aspectRatio: aspectRatio || "1:1"
@@ -145,8 +145,7 @@ app.post('/api/chat', async (req, res) => {
 			}));
 
 			// ΕΞΑΓΩΓΗ ΚΕΙΜΕΝΟΥ (Αναζητάμε το part που έχει text)
-			const textPart = parts.find(p => p.text);
-			const responseText = textPart ? textPart.text: "<div class=\"thought\">No thoughts provided.</div><p>Here is your requested image:</p>";
+			const responseText = textPart.text: "<div class=\"thought\">No thoughts provided.</div><p>Here is your requested image:</p>";
 
 			res.json({
 				success: true,
