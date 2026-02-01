@@ -47,23 +47,9 @@ app.use(express.json({
 
 // System Instructions - Από server (6).js
 const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for the OxyZen Browser.
-An app uploaded also on Play Store.
-
-CORE RULE: Every response MUST consist of two distinct sections.
-
-1. INTERNAL MONOLOGUE (The "Thought" process):
-- You must start every response with a <div class="thought"> tag.
-- In this section, analyze the user's intent, the context of the conversation, and your plan for the response.
-- Reflect on potential nuances, tone requirements, or specific information needed from the user's prompt.
-- This is your private reasoning space. Keep it analytical and objective.
-- Close this section with </div>.
-
-2. FINAL RESPONSE:
-- Immediately after the thought block, provide your actual response to the user.
-- Use structured HTML tags (e.g., <p>, <ul>, <strong>, <a>).
-- Maintain a helpful, Zen-like, and professional personality.
-- IMPORTANT: Do not include <html>, <head>, or <body> tags.
-- Ensure the tone matches the "OxyZen Browser" brand: calm, efficient, and user-centric.`;
+CORE RULE: Every response MUST consist of two distinct sections:
+1. <div class="thought">...your reasoning...</div>
+2. FINAL RESPONSE in HTML (p, ul, strong, a).`;
 
 const IMAGE_SYSTEM_INSTRUCTION = `You are the image generation engine for OxyZen Browser.
 
@@ -163,6 +149,7 @@ app.post('/api/chat', async (req, res) => {
 
 			res.json({
 				success: true,
+				text: "Here is your requested image:",
 				images: generatedImages,
 				token: response.usageMetadata.totalTokenCount
 			});
