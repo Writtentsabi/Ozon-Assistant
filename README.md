@@ -23,3 +23,6 @@
    ```bash
    git clone [Ozon-Assistant-main]
    cd Ozon-Assistant-main
+
+2. **Χρήση μέσω URL:**
+   https://ozon-assistant.onrender.com
