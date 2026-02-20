@@ -25,4 +25,4 @@
    cd Ozon-Assistant-main
 
 2. **Χρήση μέσω URL:**
-   https://ozon-assistant.onrender.com
+   <a href="https://ozon-assistant.onrender.com" target= "_blank">Ozon Assistant</a>
