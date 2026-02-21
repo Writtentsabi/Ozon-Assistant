@@ -78,7 +78,7 @@ body {
 
 }
 
-.input-prompt, .input-text, .input-button, .output-prompt, .copy-button {
+.input-text, .input-button, li, .copy-button {
 
 	display: flex;
 
@@ -106,29 +106,13 @@ body {
 
 }
 
-.input-prompt {
-
-	border-top-right-radius: 0px;
-
-	border-bottom-right-radius: 30px;
-
-}
-
-.output-prompt {
-
-	border-top-left-radius: 0px;
-
-	border-bottom-left-radius: 30px;
-
-}
-
-.input-button, .input-text, .output-prompt, .copy-button {
+.input-button, .input-text, li, .copy-button {
 
 	background-color: var(--background-smallbox);
 
 }
 
-.input-prompt, .input-widget {
+.user-prompt, .input-widget {
 
 	background-color: var(--background-box);
 
@@ -162,7 +146,7 @@ body {
 
 }
 
-.input-prompt, .output-prompt {
+li {
 
 	width: 70vmin;
 
