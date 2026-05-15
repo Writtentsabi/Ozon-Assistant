@@ -168,20 +168,21 @@ app.post('/api/chat', async (req, res) => {
 			});
 
 		} else if (decision.includes("NAVIGATE")) {
-			// --- ΛΟΓΙΚΗ ΠΛΟΗΓΗΣΗΣ (Function Calling ΜΟΝΟ, χωρίς Google Search για αποφυγή Conflict) ---
-			const chat = ai.chats.create({
+			// --- ΛΟΓΙΚΗ ΠΛΟΗΓΗΣΗΣ (Καθαρό Request χωρίς Ιστορικό για να μην μπερδεύεται) ---
+			const response = await ai.models.generateContent({
 				model: CHAT_MODEL,
-				history: history || [],
+				contents: [{
+					role: "user", parts: [{
+						text: prompt
+					}]
+				}],
 				config: {
-					systemInstruction: SYSTEM_INSTRUCTION + "\nCRITICAL: The user wants to visit a site. You MUST call the 'open_url' tool immediately. Do not just textually reply.",
+					systemInstruction: "You are the OxyZen Browser navigator. Your ONLY job is to return a function call to 'open_url' for the website the user requested. Do not write text, do not write code blocks, just call the tool.",
 					tools: [openUrlTool],
 					safetySettings: safety,
 				},
 			});
 
-			let response = await chat.sendMessage({
-				message: prompt
-			});
 			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
 
 			if (candidatePart && candidatePart.functionCall) {
@@ -196,11 +197,15 @@ app.post('/api/chat', async (req, res) => {
 				}
 			}
 
+			// Fallback σε περίπτωση που για κάποιο λόγο δεν τρέξει το tool
 			return res.json({
-				text: response.text, token: response.usageMetadata.totalTokenCount
+				text: `<div class="thought">Fallback navigation handling.</div><p>Opening link: <a href="${prompt}" target="_blank">${prompt}</a></p>`,
+				openUrl: prompt.includes("http") ? prompt: `https://google.com/search?q=${encodeURIComponent(prompt)}`,
+				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
 		} else {
+
 			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH (Google Search ΜΟΝΟ) ---
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
