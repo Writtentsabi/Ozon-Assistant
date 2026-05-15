@@ -51,8 +51,8 @@ const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for
 CORE RULES:
 1. Every response MUST consist of two distinct sections:
 - <div class="thought">...your reasoning...</div>
-- FINAL RESPONSE in HTML (p, ul, strong, a).
-2. NAVIGATION RULE: If the user explicitly asks to open, visit, or navigate to a website/app (e.g., "Άνοιξε το YouTube", "Go to Google"), you MUST NOT just textually reply that you are opening it. You MUST call the "open_url" tool immediately.`;
+- FINAL RESPONSE in HTML (p, ul, strong, a).`
+
 const IMAGE_SYSTEM_INSTRUCTION = `You are the image generation engine for OxyZen Browser.
 
 CRITICAL RULES:
@@ -79,7 +79,7 @@ const openUrlTool = {
 	}]
 };
 
-// ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat
+// ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat με έξυπνο Router 3 επιλογών
 app.post('/api/chat', async (req, res) => {
 	const {
 		prompt, images, mimeType, history, aspectRatio
@@ -92,8 +92,9 @@ app.post('/api/chat', async (req, res) => {
 			contents: [{
 				parts: [{
 					text: `Analyze the user input: "${prompt}".
-					If the user wants to generate, draw, or create an image/visual, reply ONLY with "IMAGE".
-					Otherwise, reply ONLY with "TEXT".`
+					- If the user wants to generate, draw, or create an image/visual, reply ONLY with "IMAGE".
+					- If the user explicitly wants to open, launch, go to, or visit a specific website/URL (e.g., "Άνοιξε το YouTube", "Πήγαινέ με στο google.com", "open github"), reply ONLY with "NAVIGATE".
+					- Otherwise, for any general question, chat, or web search request, reply ONLY with "TEXT".`
 				}]
 			}]
 		});
@@ -102,13 +103,12 @@ app.post('/api/chat', async (req, res) => {
 
 		// 2. Εκτέλεση βάσει της απόφασης
 		if (decision.includes("IMAGE")) {
+			// --- ΛΟΓΙΚΗ ΕΙΚΟΝΑΣ ---
 			const contents = [];
-
 			if (history && Array.isArray(history)) {
 				history.forEach(msg => {
 					contents.push({
-						role: msg.role,
-						parts: [{
+						role: msg.role, parts: [{
 							text: msg.parts[0].text
 						}]
 					});
@@ -122,13 +122,11 @@ app.post('/api/chat', async (req, res) => {
 				images.forEach(imgBase64 => {
 					currentParts.push({
 						inlineData: {
-							data: imgBase64,
-							mimeType: mimeType || "image/jpeg"
+							data: imgBase64, mimeType: mimeType || "image/jpeg"
 						}
 					});
 				});
 			}
-
 			contents.push({
 				role: "user", parts: currentParts
 			});
@@ -159,19 +157,51 @@ app.post('/api/chat', async (req, res) => {
 			const generatedImages = parts
 			.filter(part => part.inlineData)
 			.map(part => ({
-				data: part.inlineData.data,
-				mimeType: part.inlineData.mimeType
+				data: part.inlineData.data, mimeType: part.inlineData.mimeType
 			}));
 
-			res.json({
+			return res.json({
 				success: true,
 				text: "Here is your requested image:",
 				images: generatedImages,
 				token: response.usageMetadata.totalTokenCount
 			});
 
+		} else if (decision.includes("NAVIGATE")) {
+			// --- ΛΟΓΙΚΗ ΠΛΟΗΓΗΣΗΣ (Function Calling ΜΟΝΟ, χωρίς Google Search για αποφυγή Conflict) ---
+			const chat = ai.chats.create({
+				model: CHAT_MODEL,
+				history: history || [],
+				config: {
+					systemInstruction: SYSTEM_INSTRUCTION + "\nCRITICAL: The user wants to visit a site. You MUST call the 'open_url' tool immediately. Do not just textually reply.",
+					tools: [openUrlTool],
+					safetySettings: safety,
+				},
+			});
+
+			let response = await chat.sendMessage({
+				message: prompt
+			});
+			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
+
+			if (candidatePart && candidatePart.functionCall) {
+				const call = candidatePart.functionCall;
+				if (call.name === "open_url") {
+					const targetUrl = call.args.url;
+					return res.json({
+						text: `<div class="thought">Navigating to requested site...</div><p>Opening link: <a href="${targetUrl}" target="_blank">${targetUrl}</a></p>`,
+						openUrl: targetUrl,
+						token: response.usageMetadata?.totalTokenCount || 0
+					});
+				}
+			}
+
+			return res.json({
+				text: response.text, token: response.usageMetadata.totalTokenCount
+			});
+
 		} else {
-			// Λογική Πολυτροπικής Συνομιλίας
+			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH (Google Search ΜΟΝΟ) ---
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
@@ -179,9 +209,7 @@ app.post('/api/chat', async (req, res) => {
 					systemInstruction: SYSTEM_INSTRUCTION,
 					tools: [{
 						googleSearch: {}
-					},
-						openUrlTool
-					],
+					}],
 					safetySettings: safety,
 				},
 			});
@@ -194,8 +222,7 @@ app.post('/api/chat', async (req, res) => {
 			} else {
 				const imageParts = images.map(imgBase64 => ({
 					inlineData: {
-						data: imgBase64,
-						mimeType: mimeType || "image/jpeg"
+						data: imgBase64, mimeType: mimeType || "image/jpeg"
 					}
 				}));
 				response = await chat.sendMessage({
@@ -203,32 +230,11 @@ app.post('/api/chat', async (req, res) => {
 				});
 			}
 
-			// --- ΣΩΣΤΟΣ ΕΛΕΓΧΟΣ ΓΙΑ FUNCTION CALL ---
-			// Στο νέο @google/genAI SDK, τα calls έρχονται συνήθως μέσα στο πρώτο candidate part
-			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
-
-			if (candidatePart && candidatePart.functionCall) {
-				const call = candidatePart.functionCall;
-
-				if (call.name === "open_url") {
-					const targetUrl = call.args.url;
-
-					// Στέλνουμε το JSON που περιμένει ο client.js για να κάνει το window.open()
-					return res.json({
-						text: `<div class="thought">Executing open_url for: ${targetUrl}</div><p>Opening link: <a href="${targetUrl}" target="_blank">${targetUrl}</a></p>`,
-						openUrl: targetUrl,
-						token: response.usageMetadata?.totalTokenCount || 0
-					});
-				}
-			}
-
-			// Αν δεν ήταν function call, επιστρέφει κανονικά το κείμενο
-			res.json({
+			return res.json({
 				text: response.text,
 				token: response.usageMetadata.totalTokenCount
 			});
 		}
-
 
 	} catch (error) {
 		console.error("Zen Unified Error:", error);
@@ -237,6 +243,7 @@ app.post('/api/chat', async (req, res) => {
 		});
 	}
 });
+
 
 
 // Endpoint PaxSenix (Από server 6)
