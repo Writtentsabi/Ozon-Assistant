@@ -47,10 +47,12 @@ app.use(express.json({
 
 // System Instructions - Από server (6).js
 const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for the OxyZen Browser.
-CORE RULE: Every response MUST consist of two distinct sections:
-1. <div class="thought">...your reasoning...</div>
-2. FINAL RESPONSE in HTML (p, ul, strong, a).`;
 
+CORE RULES:
+1. Every response MUST consist of two distinct sections:
+- <div class="thought">...your reasoning...</div>
+- FINAL RESPONSE in HTML (p, ul, strong, a).
+2. NAVIGATION RULE: If the user explicitly asks to open, visit, or navigate to a website/app (e.g., "Άνοιξε το YouTube", "Go to Google"), you MUST NOT just textually reply that you are opening it. You MUST call the "open_url" tool immediately.`;
 const IMAGE_SYSTEM_INSTRUCTION = `You are the image generation engine for OxyZen Browser.
 
 CRITICAL RULES:
@@ -59,6 +61,24 @@ CRITICAL RULES:
 3. REFUSAL: If the user is just chatting or asking a question without a request to create a visual, DO NOT generate an image. Instead, provide a brief text response in the user's language explaining that you are ready to create an image when they provide a description.
 4. TRANSLATION: Your internal processing for the image generation tool must always be in English to ensure quality.`;
 
+// Ορισμός του εργαλείου για το άνοιγμα συνδέσμων
+const openUrlTool = {
+	functionDeclarations: [{
+		name: "open_url",
+		description: "Opens a specific website or URL when the user explicitly requests to navigate or open a site (e.g., 'Go to YouTube', 'Άνοιξε το Google').",
+		parameters: {
+			type: "OBJECT",
+			properties: {
+				url: {
+					type: "STRING",
+					description: "The full destination URL to open (e.g., 'https://www.youtube.com', 'https://www.google.com'). Must include http:// or https://."
+				}
+			},
+			required: ["url"]
+		}
+	}]
+};
+
 // ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat
 app.post('/api/chat', async (req, res) => {
 	const {
@@ -66,7 +86,7 @@ app.post('/api/chat', async (req, res) => {
 	} = req.body;
 
 	try {
-		// 1. Φάση Δρομολόγησης (Intelligent Routing) χρησιμοποιώντας ai.models.generateContent
+		// 1. Φάση Δρομολόγησης (Intelligent Routing)
 		const routerResult = await ai.models.generateContent({
 			model: ROUTER_MODEL,
 			contents: [{
@@ -82,10 +102,8 @@ app.post('/api/chat', async (req, res) => {
 
 		// 2. Εκτέλεση βάσει της απόφασης
 		if (decision.includes("IMAGE")) {
-			// Δημιουργία περιεχομένου που περιλαμβάνει το ιστορικό για context
 			const contents = [];
 
-			// Προσθήκη ιστορικού (αν υπάρχει) για να έχει το μοντέλο το context της συζήτησης
 			if (history && Array.isArray(history)) {
 				history.forEach(msg => {
 					contents.push({
@@ -97,7 +115,6 @@ app.post('/api/chat', async (req, res) => {
 				});
 			}
 
-			// Προσθήκη του τρέχοντος prompt και τυχόν εικόνων εισόδου
 			const currentParts = [{
 				text: prompt
 			}];
@@ -113,13 +130,12 @@ app.post('/api/chat', async (req, res) => {
 			}
 
 			contents.push({
-				role: "user",
-				parts: currentParts
+				role: "user", parts: currentParts
 			});
 
 			const response = await ai.models.generateContent({
 				model: IMAGE_MODEL,
-				contents: contents, // Τώρα περιλαμβάνει όλο το ιστορικό
+				contents: contents,
 				config: {
 					systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
 					responseModalities: ['IMAGE'],
@@ -154,9 +170,8 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata.totalTokenCount
 			});
 
-
 		} else {
-			// Λογική Πολυτροπικής Συνομιλίας (όπως στο server 6)
+			// Λογική Πολυτροπικής Συνομιλίας
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
@@ -164,7 +179,9 @@ app.post('/api/chat', async (req, res) => {
 					systemInstruction: SYSTEM_INSTRUCTION,
 					tools: [{
 						googleSearch: {}
-					}],
+					},
+						openUrlTool
+					],
 					safetySettings: safety,
 				},
 			});
@@ -186,11 +203,32 @@ app.post('/api/chat', async (req, res) => {
 				});
 			}
 
+			// --- ΣΩΣΤΟΣ ΕΛΕΓΧΟΣ ΓΙΑ FUNCTION CALL ---
+			// Στο νέο @google/genAI SDK, τα calls έρχονται συνήθως μέσα στο πρώτο candidate part
+			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
+
+			if (candidatePart && candidatePart.functionCall) {
+				const call = candidatePart.functionCall;
+
+				if (call.name === "open_url") {
+					const targetUrl = call.args.url;
+
+					// Στέλνουμε το JSON που περιμένει ο client.js για να κάνει το window.open()
+					return res.json({
+						text: `<div class="thought">Executing open_url for: ${targetUrl}</div><p>Opening link: <a href="${targetUrl}" target="_blank">${targetUrl}</a></p>`,
+						openUrl: targetUrl,
+						token: response.usageMetadata?.totalTokenCount || 0
+					});
+				}
+			}
+
+			// Αν δεν ήταν function call, επιστρέφει κανονικά το κείμενο
 			res.json({
 				text: response.text,
 				token: response.usageMetadata.totalTokenCount
 			});
 		}
+
 
 	} catch (error) {
 		console.error("Zen Unified Error:", error);
@@ -199,6 +237,7 @@ app.post('/api/chat', async (req, res) => {
 		});
 	}
 });
+
 
 // Endpoint PaxSenix (Από server 6)
 app.post('/api/paxsenix-chat', async (req, res) => {
