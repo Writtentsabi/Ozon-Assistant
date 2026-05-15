@@ -103,6 +103,7 @@ const toBase64 = file => new Promise((resolve, reject) => {
 async function sendChat(prompt, imageData = null, mimeType = null) {
 	const outputLi = document.createElement('li');
 	outputLi.id = 'loading';
+	outputLi.className = 'bot-response';
 	outputLi.innerHTML = langData.thoughts[Math.floor(Math.random() * langData.thoughts.length)];
 	promptsContainer.appendChild(outputLi);
 	promptsContainer.scrollTo(0, promptsContainer.scrollHeight);

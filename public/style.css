@@ -78,7 +78,7 @@ body {
 
 }
 
-.input-text, .input-button, li, .copy-button {
+.input-text, .input-button, .copy-button {
 
 	display: flex;
 
@@ -146,13 +146,32 @@ body {
 
 }
 
-li {
-
+/* Το γενικό li της συνομιλίας - Καθαρό, χωρίς φόντο και περίεργα flex */
+.prompt-list li {
+	display: block;
+	font-family: "Handjet";
+	font-size: clamp(0.5rem, 3vmin + 0.5rem, 2rem);
+	color: var(--text-normal);
+	margin: 1rem auto;
 	width: 70vmin;
-
-	flex-flow: column nowrap;
-
+	text-align: left;
+	/* Στοίχιση αριστερά για φυσική ανάγνωση */
 }
+
+/* Το στυλ ειδικά για τις ερωτήσεις του χρήστη (δεξιά, σαν συννεφάκι) */
+.prompt-list li.user-prompt {
+	background-color: var(--background-box);
+	color: var(--text-subtitle);
+	border-radius: 15px 15px 0 15px;
+	padding: 0.8rem;
+	margin-left: auto;
+	/* Σπρώχνει το μήνυμα του χρήστη δεξιά */
+	margin-right: 0;
+	width: fit-content;
+	max-width: 70vmin;
+	filter: drop-shadow(2px 2px 4px var(--shadow-box));
+}
+
 
 .category-list {
 
