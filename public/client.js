@@ -140,12 +140,18 @@ async function sendChat(prompt, imageData = null, mimeType = null) {
 			// Εμφάνιση κειμένου απάντησης
 			outputLi.innerHTML = `<p>${answerText}</p>`;
 
+			// Εάν ο διακομιστής έστειλε εντολή openUrl, την εκτελούμε
+			if (data.openUrl) {
+				// Άνοιγμα σε νέο παράθυρο/καρτέλα
+				window.open(data.openUrl, '_blank');
+			}
+
 			// Εμφάνιση Εικόνων αν υπάρχουν (Από Image Generation)
 			if (data.images && data.images.length > 0) {
 				data.images.forEach(img => {
 					const imgEl = document.createElement('img');
 					imgEl.src = `data:${img.mimeType};base64,${img.data}`;
-					imgEl.className = 'output-image'; // Χρήση της κλάσης από το CSS σου
+					imgEl.className = 'output-image';
 					outputLi.appendChild(imgEl);
 				});
 			}
@@ -166,6 +172,7 @@ async function sendChat(prompt, imageData = null, mimeType = null) {
 				}]
 			});
 		}
+
 	} catch (error) {
 		outputLi.innerHTML = `${langData.error_network} ${error.message}`;
 	} finally {
