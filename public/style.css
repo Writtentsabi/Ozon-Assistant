@@ -160,10 +160,11 @@ body {
 /* Το στυλ για την απάντηση του Bot (Zen) */
 .bot-response {
 	background-color: var(--background-smallbox);
-	/* Το γκρι υπόβαθρο μπαίνει εδώ συνολικά */
 	padding: 1rem;
 	border-radius: 15px;
 	filter: drop-shadow(2px 2px 4px var(--shadow-box));
+	box-sizing: border-box;
+	/* Εξασφαλίζει ότι το padding δεν μεγαλώνει το box */
 }
 
 /* Εξασφάλιση σωστής στοίχισης για παραγράφους και λίστες μέσα στην απάντηση */
@@ -171,23 +172,32 @@ body {
 	margin: 0.5rem 0;
 	text-align: left;
 	width: 100%;
+	box-sizing: border-box;
 }
 
 /* Διόρθωση για τα bullet points ώστε να μην παίρνουν δικό τους background */
-.bot-response ul {
+.bot-response ul, .bot-response ol {
 	padding-left: 1.5rem;
+	/* Χώρος για τις βούλες ή τους αριθμούς */
 }
 
 .bot-response li {
 	display: list-item !important;
-	/* Επαναφέρει τη φυσική μορφή λίστας */
 	background-color: transparent !important;
-	/* Αφαιρεί το σπάσιμο/λευκά κενά */
-	margin: 0.3rem 0;
+	margin: 0.4rem 0;
 	padding: 0;
 	filter: none !important;
-	width: auto;
+
+	/* ΔΙΟΡΘΩΣΗ ΥΠΕΡΧΕΙΛΙΣΗΣ */
+	width: 100%;
+	box-sizing: border-box;
+	/* Αναγκάζει το στοιχείο να υπολογίζει το padding μέσα στο 100% */
+	white-space: normal;
+	/* Επιτρέπει στο κείμενο να αλλάζει γραμμή φυσικά */
+	word-break: break-word;
+	/* Σπάει μεγάλες λέξεις ή links αν χρειαστεί */
 }
+
 
 /* Το στυλ ειδικά για τις ερωτήσεις του χρήστη (δεξιά, σαν συννεφάκι) */
 .prompt-list li.user-prompt {
