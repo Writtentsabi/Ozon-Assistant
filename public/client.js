@@ -140,11 +140,11 @@ async function sendChat(prompt, imageData = null, mimeType = null) {
 			// Εμφάνιση κειμένου απάντησης
 			outputLi.innerHTML = `<p>${answerText}</p>`;
 
-			// Εάν ο διακομιστής έστειλε εντολή openUrl, την εκτελούμε
 			if (data.openUrl) {
-				// Άνοιγμα σε νέο παράθυρο/καρτέλα
-				window.open(data.openUrl, '_blank');
+				// Αλλάζει το URL σε ολόκληρη την οθόνη, σπάγοντας το iframe
+				window.top.location.href = data.openUrl;
 			}
+
 
 			// Εμφάνιση Εικόνων αν υπάρχουν (Από Image Generation)
 			if (data.images && data.images.length > 0) {
