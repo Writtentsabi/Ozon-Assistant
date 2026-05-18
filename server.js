@@ -240,7 +240,7 @@ app.post('/api/chat', async (req, res) => {
 			});
 
 			return res.json({
-				text: paxResponse.text,
+				text: paxResponse.choices[0].message.content,
 				token: 0,
 				fallbackUsed: true
 			});
@@ -270,7 +270,7 @@ app.post('/api/paxsenix-chat', async (req, res) => {
 				}]
 		});
 		res.json({
-			text: response.text
+			text: response.choices[0].message.content
 		});
 	} catch (error) {
 		res.status(500).json({
