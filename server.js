@@ -79,7 +79,7 @@ const openUrlTool = {
 	}]
 };
 
-// ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat με έξυπνο Router 3 επιλογών και Fallback σε PaxSenix
+// ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat με Καθολικό Fallback σε PaxSenix αν κρασάρει η Google
 app.post('/api/chat', async (req, res) => {
 	const {
 		prompt, images, mimeType, history, aspectRatio
@@ -115,9 +115,7 @@ app.post('/api/chat', async (req, res) => {
 				});
 			}
 
-			const currentParts = [{
-				text: prompt
-			}];
+			const currentParts = [{ text: prompt }];
 			if (images && Array.isArray(images)) {
 				images.forEach(imgBase64 => {
 					currentParts.push({
@@ -127,9 +125,7 @@ app.post('/api/chat', async (req, res) => {
 					});
 				});
 			}
-			contents.push({
-				role: "user", parts: currentParts
-			});
+			contents.push({ role: "user", parts: currentParts });
 
 			const response = await ai.models.generateContent({
 				model: IMAGE_MODEL,
@@ -168,13 +164,11 @@ app.post('/api/chat', async (req, res) => {
 			});
 
 		} else if (decision.includes("NAVIGATE")) {
-			// --- ΛΟΓΙΚΗ ΠΛΟΗΓΗΣΗΣ (Καθαρό Request χωρίς Ιστορικό για να μην μπερδεύεται) ---
+			// --- ΛΟΓΙΚΗ ΠΛΟΗΓΗΣΗΣ ---
 			const response = await ai.models.generateContent({
 				model: CHAT_MODEL,
 				contents: [{
-					role: "user", parts: [{
-						text: prompt
-					}]
+					role: "user", parts: [{ text: prompt }]
 				}],
 				config: {
 					systemInstruction: "You are the OxyZen Browser navigator. Your ONLY job is to return a function call to 'open_url' for the website the user requested. Do not write text, do not write code blocks, just call the tool.",
@@ -197,7 +191,6 @@ app.post('/api/chat', async (req, res) => {
 				}
 			}
 
-			// Fallback σε περίπτωση που για κάποιο λόγο δεν τρέξει το tool
 			return res.json({
 				text: `<div class="thought">Fallback navigation handling.</div><p>Opening link: <a href="${prompt}" target="_blank">${prompt}</a></p>`,
 				openUrl: prompt.includes("http") ? prompt: `https://google.com/search?q=${encodeURIComponent(prompt)}`,
@@ -205,66 +198,59 @@ app.post('/api/chat', async (req, res) => {
 			});
 
 		} else {
-			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH (Με αυτόματο Fallback σε PaxSenix) ---
-			try {
-				const chat = ai.chats.create({
-					model: CHAT_MODEL,
-					history: history || [],
-					config: {
-						systemInstruction: SYSTEM_INSTRUCTION,
-						tools: [{
-							googleSearch: {}
-						}],
-						safetySettings: safety,
-					},
-				});
+			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
+			const chat = ai.chats.create({
+				model: CHAT_MODEL,
+				history: history || [],
+				config: {
+					systemInstruction: SYSTEM_INSTRUCTION,
+					tools: [{ googleSearch: {} }],
+					safetySettings: safety,
+				},
+			});
 
-				let response;
-				if (!images || !Array.isArray(images)) {
-					response = await chat.sendMessage({
-						message: prompt
-					});
-				} else {
-					const imageParts = images.map(imgBase64 => ({
-						inlineData: {
-							data: imgBase64, mimeType: mimeType || "image/jpeg"
-						}
-					}));
-					response = await chat.sendMessage({
-						message: [...imageParts, prompt]
-					});
-				}
-
-				return res.json({
-					text: response.text,
-					token: response.usageMetadata?.totalTokenCount || 0
-				});
-
-			} catch (geminiError) {
-				console.warn("⚠️ Gemini Chat Error. Activating PaxSenix Fallback:", geminiError.message);
-				
-				// Κλήση του PaxSenix AI ως εναλλακτική λύση (Fallback)
-				const paxResponse = await paxsenix.createChatCompletion({
-					model: 'gpt-3.5-turbo',
-					messages: [
-						{ role: 'system', content: SYSTEM_INSTRUCTION },
-						{ role: 'user', content: prompt }
-					]
-				});
-
-				return res.json({
-					text: paxResponse.text,
-					token: 0, // Το PaxSenix δεν επιστρέφει tokenCount με τον ίδιο τρόπο, βάζουμε 0 για να μην σκάσει το frontend
-					fallbackUsed: true // Προαιρετικό flag για να ξέρει το frontend ότι απάντησε το backup μοντέλο
-				});
+			let response;
+			if (!images || !Array.isArray(images)) {
+				response = await chat.sendMessage({ message: prompt });
+			} else {
+				const imageParts = images.map(imgBase64 => ({
+					inlineData: { data: imgBase64, mimeType: mimeType || "image/jpeg" }
+				}));
+				response = await chat.sendMessage({ message: [...imageParts, prompt] });
 			}
+
+			return res.json({
+				text: response.text,
+				token: response.usageMetadata?.totalTokenCount || 0
+			});
 		}
 
-	} catch (error) {
-		console.error("Zen Unified Error:", error);
-		res.status(500).json({
-			error: "Server error: " + error.message
-		});
+	} catch (globalError) {
+		// ΚΑΘΟΛΙΚΟ FALLBACK: Αν σκάσει ΟΠΟΙΟΔΗΠΟΤΕ βήμα της Google (λόγω του Billing Block 403)
+		console.warn("🚨 Κρίσιμο σφάλμα Google API. Ενεργοποίηση Καθολικού PaxSenix Fallback:", globalError.message);
+		
+		try {
+			// Άμεση κλήση του PaxSenix AI με τις σωστές οδηγίες εμφάνισης (SYSTEM_INSTRUCTION)
+			const paxResponse = await paxsenix.createChatCompletion({
+				model: 'gpt-3.5-turbo',
+				messages: [
+					{ role: 'system', content: SYSTEM_INSTRUCTION },
+					{ role: 'user', content: prompt }
+				]
+			});
+
+			return res.json({
+				text: paxResponse.text,
+				token: 0,
+				fallbackUsed: true
+			});
+            
+		} catch (paxError) {
+			console.error("Fatal Error (Both Gemini and PaxSenix failed):", paxError);
+			return res.status(500).json({
+				error: "Όλες οι υπηρεσίες τεχνητής νοημοσύνης είναι προσωρινά μη διαθέσιμες."
+			});
+		}
 	}
 });
 
