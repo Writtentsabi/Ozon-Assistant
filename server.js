@@ -79,7 +79,7 @@ const openUrlTool = {
 	}]
 };
 
-// ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat με έξυπνο Router 3 επιλογών
+// ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat με έξυπνο Router 3 επιλογών και Fallback σε PaxSenix
 app.post('/api/chat', async (req, res) => {
 	const {
 		prompt, images, mimeType, history, aspectRatio
@@ -205,40 +205,59 @@ app.post('/api/chat', async (req, res) => {
 			});
 
 		} else {
-
-			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH (Google Search ΜΟΝΟ) ---
-			const chat = ai.chats.create({
-				model: CHAT_MODEL,
-				history: history || [],
-				config: {
-					systemInstruction: SYSTEM_INSTRUCTION,
-					tools: [{
-						googleSearch: {}
-					}],
-					safetySettings: safety,
-				},
-			});
-
-			let response;
-			if (!images || !Array.isArray(images)) {
-				response = await chat.sendMessage({
-					message: prompt
+			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH (Με αυτόματο Fallback σε PaxSenix) ---
+			try {
+				const chat = ai.chats.create({
+					model: CHAT_MODEL,
+					history: history || [],
+					config: {
+						systemInstruction: SYSTEM_INSTRUCTION,
+						tools: [{
+							googleSearch: {}
+						}],
+						safetySettings: safety,
+					},
 				});
-			} else {
-				const imageParts = images.map(imgBase64 => ({
-					inlineData: {
-						data: imgBase64, mimeType: mimeType || "image/jpeg"
-					}
-				}));
-				response = await chat.sendMessage({
-					message: [...imageParts, prompt]
+
+				let response;
+				if (!images || !Array.isArray(images)) {
+					response = await chat.sendMessage({
+						message: prompt
+					});
+				} else {
+					const imageParts = images.map(imgBase64 => ({
+						inlineData: {
+							data: imgBase64, mimeType: mimeType || "image/jpeg"
+						}
+					}));
+					response = await chat.sendMessage({
+						message: [...imageParts, prompt]
+					});
+				}
+
+				return res.json({
+					text: response.text,
+					token: response.usageMetadata?.totalTokenCount || 0
+				});
+
+			} catch (geminiError) {
+				console.warn("⚠️ Gemini Chat Error. Activating PaxSenix Fallback:", geminiError.message);
+				
+				// Κλήση του PaxSenix AI ως εναλλακτική λύση (Fallback)
+				const paxResponse = await paxsenix.createChatCompletion({
+					model: 'gpt-3.5-turbo',
+					messages: [
+						{ role: 'system', content: SYSTEM_INSTRUCTION },
+						{ role: 'user', content: prompt }
+					]
+				});
+
+				return res.json({
+					text: paxResponse.text,
+					token: 0, // Το PaxSenix δεν επιστρέφει tokenCount με τον ίδιο τρόπο, βάζουμε 0 για να μην σκάσει το frontend
+					fallbackUsed: true // Προαιρετικό flag για να ξέρει το frontend ότι απάντησε το backup μοντέλο
 				});
 			}
-
-			return res.json({
-				text: response.text,
-				token: response.usageMetadata.totalTokenCount
-			});
 		}
 
 	} catch (error) {
@@ -248,8 +267,6 @@ app.post('/api/chat', async (req, res) => {
 		});
 	}
 });
-
-
 
 // Endpoint PaxSenix (Από server 6)
 app.post('/api/paxsenix-chat', async (req, res) => {
