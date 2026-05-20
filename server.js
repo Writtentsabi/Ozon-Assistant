@@ -162,7 +162,6 @@ app.post('/api/chat', async (req, res) => {
 					- If the user wants to move, change, or set the position of the toolbar/navbar/menu to the top or bottom/pants of the page (e.g., "βάλε το toolbar πάνω", "μετακίνησε τη μπάρα κάτω", "θέλω το μενού στο πάτο"), reply ONLY with "TOOLBAR".
 					- If the user wants to change, toggle, or set the default search engine to ANY website (e.g., "βάλε google για αναζήτηση", "άλλαξε τη μηχανή σε duckduckgo", "θέλω αναζήτηση μέσω youtube", "set default search engine to github"), reply ONLY with "SEARCH_ENGINE".
 					- Otherwise, for any general question, chat, or web search request, reply ONLY with "TEXT".`
-
 				}]
 			}]
 		});
@@ -295,13 +294,12 @@ app.post('/api/chat', async (req, res) => {
 					const targetTheme = call.args.theme;
 					return res.json({
 						text: `<div class="thought">Changing theme to ${targetTheme}...</div><p>Changing appearance to <strong>${targetTheme} mode</strong>.</p>`,
-						setTheme: targetTheme, // Επιστρέφει την τιμή στο front-end
+						setTheme: targetTheme,
 						token: response.usageMetadata?.totalTokenCount || 0
 					});
 				}
 			}
 
-			// Fallback αν αποτύχει η κλήση της συνάρτησης
 			return res.json({
 				text: `<div class="thought">Fallback theme handling.</div><p>Setting theme to dark mode by default.</p>`,
 				setTheme: "dark",
@@ -333,13 +331,12 @@ app.post('/api/chat', async (req, res) => {
 					const greekPosition = targetPosition === "top" ? "κορυφή": "πάτο";
 					return res.json({
 						text: `<div class="thought">Moving toolbar to ${targetPosition}...</div><p>Μετακίνηση του toolbar στην <strong>${greekPosition}</strong> της σελίδας.</p>`,
-						setToolbarPosition: targetPosition, // Επιστρέφει την τιμή στο front-end
+						setToolbarPosition: targetPosition,
 						token: response.usageMetadata?.totalTokenCount || 0
 					});
 				}
 			}
 
-			// Fallback αν αποτύχει η κλήση
 			return res.json({
 				text: `<div class="thought">Fallback toolbar handling.</div><p>Το toolbar μετακινήθηκε στην κορυφή από προεπιλογή.</p>`,
 				setToolbarPosition: "top",
@@ -384,13 +381,12 @@ app.post('/api/chat', async (req, res) => {
 					return res.json({
 						text: `<div class="thought">Setting default search engine to ${targetEngine}...</div><p>Η προεπιλεγμένη αναζήτηση ορίστηκε πλέον μέσω <strong>${targetEngine}</strong>.</p>`,
 						setSearchEngine: targetEngine,
-						searchUrlTemplate: targetUrl, // Επιστρέφει το δυναμικό URL στο front-end
+						searchUrlTemplate: targetUrl,
 						token: response.usageMetadata?.totalTokenCount || 0
 					});
 				}
 			}
 
-			// Fallback σε Google αν κάτι αποτύχει
 			return res.json({
 				text: `<div class="thought">Fallback search engine handling.</div><p>Η προεπιλεγμένη μηχανή αναζήτησης ορίστηκε σε Google.</p>`,
 				setSearchEngine: "google",
@@ -398,55 +394,80 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
-		}
-
-
-	} else {
-		// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
-		// (Εδώ συνεχίζει το υπάρχον code block σου...)
-
-		// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
-		const chat = ai.chats.create({
-			model: CHAT_MODEL,
-			history: history || [],
-			config: {
-				systemInstruction: SYSTEM_INSTRUCTION,
-				tools: [{
-					googleSearch: {}
-				}],
-				safetySettings: safety,
-			},
-		});
-
-		let response;
-		if (!images || !Array.isArray(images)) {
-			response = await chat.sendMessage({
-				message: prompt
-			});
 		} else {
-			const imageParts = images.map(imgBase64 => ({
-				inlineData: {
-					data: imgBase64, mimeType: mimeType || "image/jpeg"
-				}
-			}));
-			response = await chat.sendMessage({
-				message: [...imageParts, prompt]
+			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
+			const chat = ai.chats.create({
+				model: CHAT_MODEL,
+				history: history || [],
+				config: {
+					systemInstruction: SYSTEM_INSTRUCTION,
+					tools: [{
+						googleSearch: {}
+					}],
+					safetySettings: safety,
+				},
+			});
+
+			let response;
+			if (!images || !Array.isArray(images)) {
+				response = await chat.sendMessage({
+					message: prompt
+				});
+			} else {
+				const imageParts = images.map(imgBase64 => ({
+					inlineData: {
+						data: imgBase64, mimeType: mimeType || "image/jpeg"
+					}
+				}));
+				response = await chat.sendMessage({
+					message: [...imageParts, prompt]
+				});
+			}
+
+			return res.json({
+				text: response.text,
+				token: response.usageMetadata?.totalTokenCount || 0
 			});
 		}
 
-		return res.json({
-			text: response.text,
-			token: response.usageMetadata?.totalTokenCount || 0
-		});
+	} catch (globalError) {
+		// ΚΑΘΟΛΙΚΟ FALLBACK: Αν σκάσει ΟΠΟΙΟΔΗΠΟΤΕ βήμα της Google
+		console.warn("🚨 Κρίσιμο σφάλμα Google API. Ενεργοποίηση Καθολικού PaxSenix Fallback:", globalError.message);
+
+		try {
+			const paxResponse = await paxsenix.createChatCompletion({
+				model: 'gpt-3.5-turbo',
+				messages: [{
+					role: 'system', content: SYSTEM_INSTRUCTION
+				},
+					{
+						role: 'user', content: prompt
+					}]
+			});
+
+			return res.json({
+				text: paxResponse.choices[0].message.content,
+				token: 0,
+				fallbackUsed: true
+			});
+
+		} catch (paxError) {
+			console.error("Fatal Error (Both Gemini and PaxSenix failed):", paxError);
+			return res.status(500).json({
+				error: "Όλες οι υπηρεσίες τεχνητής νοημοσύνης είναι προσωρινά μη διαθέσιμες."
+			});
+		}
 	}
+});
 
-} catch (globalError) {
-	// ΚΑΘΟΛΙΚΟ FALLBACK: Αν σκάσει ΟΠΟΙΟΔΗΠΟΤΕ βήμα της Google (λόγω του Billing Block 403)
-	console.warn("🚨 Κρίσιμο σφάλμα Google API. Ενεργοποίηση Καθολικού PaxSenix Fallback:", globalError.message);
 
+// Endpoint PaxSenix (Από server 6)
+app.post('/api/paxsenix-chat', async (req, res) => {
+	const {
+		prompt
+	} = req.body;
 	try {
-		// Άμεση κλήση του PaxSenix AI με τις σωστές οδηγίες εμφάνισης (SYSTEM_INSTRUCTION)
-		const paxResponse = await paxsenix.createChatCompletion({
+		const response = await paxsenix.createChatCompletion({
 			model: 'gpt-3.5-turbo',
 			messages: [{
 				role: 'system', content: SYSTEM_INSTRUCTION
@@ -455,78 +476,47 @@ app.post('/api/chat', async (req, res) => {
 					role: 'user', content: prompt
 				}]
 		});
-
-		return res.json({
-			text: paxResponse.choices[0].message.content,
-			token: 0,
-			fallbackUsed: true
+		res.json({
+			text: response.choices[0].message.content
 		});
-
-	} catch (paxError) {
-		console.error("Fatal Error (Both Gemini and PaxSenix failed):", paxError);
-		return res.status(500).json({
-			error: "Όλες οι υπηρεσίες τεχνητής νοημοσύνης είναι προσωρινά μη διαθέσιμες."
+	} catch (error) {
+		res.status(500).json({
+			error: error.message
 		});
 	}
-}
-});
-
-// Endpoint PaxSenix (Από server 6)
-app.post('/api/paxsenix-chat', async (req, res) => {
-const {
-prompt
-} = req.body;
-try {
-const response = await paxsenix.createChatCompletion({
-model: 'gpt-3.5-turbo',
-messages: [{
-role: 'system', content: SYSTEM_INSTRUCTION
-},
-{
-role: 'user', content: prompt
-}]
-});
-res.json({
-text: response.choices[0].message.content
-});
-} catch (error) {
-res.status(500).json({
-error: error.message
-});
-}
 });
 
 // Endpoint Perchance (Από server 6)
 app.post('/api/perchance', async (req, res) => {
-const {
-prompt
-} = req.body;
-const count = 5;
-try {
-const response = await fetch(`https://perchance.org/api/generateList.php?generator=${prompt}&count=${count}`);
-if (!response.ok) return res.status(response.status).json({
-error: response.status
-});
-const data = await response.json();
-res.json({
-text: data
-});
-} catch (error) {
-res.status(500).json({
-error: "Error fetching from Perchance: " + error.message
-});
-}
+	const {
+		prompt
+	} = req.body;
+	const count = 5;
+	try {
+		const response = await fetch(`https://perchance.org/api/generateList.php?generator=${prompt}&count=${count}`);
+		if (!response.ok) return res.status(response.status).json({
+			error: response.status
+		});
+		const data = await response.json();
+		res.json({
+			text: data
+		});
+	} catch (error) {
+		res.status(500).json({
+			error: "Error fetching from Perchance: " + error.message
+		});
+	}
 });
 
 // Endpoint για το "ξύπνημα" του server (Keep-alive / Health Check)
 app.get('/api/wakeup', (req, res) => {
-res.status(200).json({
-status: "online",
-message: "Zen Server is awake and ready",
-timestamp: new Date().toISOString()
-});
+	res.status(200).json({
+		status: "online",
+		message: "Zen Server is awake and ready",
+		timestamp: new Date().toISOString()
+	});
 });
 
 app.listen(PORT, () => {
-console.log(`Server running on port ${PORT}`);
+	console.log(`Server running on port ${PORT}`);
 });
