@@ -17,7 +17,7 @@
 }
 
 /* ΥΛΙΚΟ ΘΕΜΑ (Material Design) - ΦΩΤΕΙΝΗ ΛΕΙΤΟΥΡΓΙΑ (LIGHT MODE) */
-:root {
+:root, [data-theme="light"] {
 	/* Backgrounds (Surfaces) */
 	--background: #FFFFFF;
 	/* Surface/Background - (Λευκό) */
@@ -43,31 +43,40 @@
 
 /* ΥΛΙΚΟ ΘΕΜΑ (Material Design) - ΣΚΟΤΕΙΝΗ ΛΕΙΤΟΥΡΓΙΑ (DARK MODE) */
 @media (prefers-color-scheme: dark) {
-
 :root {
 	/* Backgrounds (Surfaces) */
 	--background: #121212;
-	/* Background - (Σχεδόν μαύρο) */
 	--background-box: #1E1E1E;
-	/* Surface 2 (Elevation 1) - (Σκούρο Γκρι) */
 	--background-smallbox: #2C2C2C;
-	/* Surface 3 (Elevation 2) - (Πιο ανοιχτό σκούρο γκρι) */
 
 	/* Text/Primary Colors */
 	--text-normal: #FFFFFF;
-	/* On Surface - (Λευκό) */
 	--text-title: #64B5F6;
-	/* Primary Color (Light Blue) */
 	--text-article: #64B5F6;
-	/* Primary Color (Links) */
 	--text-subtitle: #2196F3;
-	/* Material Blue 500 - για επιλεγμένα στοιχεία */
 
 	/* Shadows */
 	--shadow-box: #000000;
-	/* Σκιά */
 }
 }
+
+/* Εξαναγκασμένο Dark Mode από τον Zen Client */
+[data-theme="dark"] {
+	/* Backgrounds (Surfaces) */
+	--background: #121212;
+	--background-box: #1E1E1E;
+	--background-smallbox: #2C2C2C;
+
+	/* Text/Primary Colors */
+	--text-normal: #FFFFFF;
+	--text-title: #64B5F6;
+	--text-article: #64B5F6;
+	--text-subtitle: #2196F3;
+
+	/* Shadows */
+	--shadow-box: #000000;
+}
+
 
 body {
 

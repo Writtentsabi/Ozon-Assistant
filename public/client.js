@@ -69,6 +69,30 @@ function initialize() {
 	searchInput.placeholder = randomPlaceholder;
 }
 
+function applyTheme(theme) {
+	let targetTheme = theme;
+
+	// Αν ο χρήστης ζήτησε "system", ελέγχουμε τις προτιμήσεις του συστήματος
+	if (theme === 'system') {
+		const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+		targetTheme = prefersDark ? 'dark': 'light';
+	}
+
+	// Εφαρμογή στο root στοιχείο (HTML) μέσω data-attribute (προτείνεται)
+	document.documentElement.setAttribute('data-theme', targetTheme);
+
+	// Εναλλακτικά, αν δουλεύεις με κλάσεις, μπορείς να κάνεις:
+	// if (targetTheme === 'dark') {
+	//     document.body.classList.add('dark-theme');
+	// } else {
+	//     document.body.classList.remove('dark-theme');
+	// }
+
+	// Αποθήκευση στο localStorage για να παραμένει η επιλογή στο refresh
+	localStorage.setItem('oxyzen-theme', theme);
+}
+
+
 function createThoughtDiv(text) {
 	const thoughtDiv = document.createElement('div');
 	thoughtDiv.className = 'thought';
@@ -138,12 +162,19 @@ async function sendChat(prompt, imageData = null, mimeType = null) {
 			} = parseResponse(data.text);
 
 			// Εμφάνιση κειμένου απάντησης
+			// Εμφάνιση κειμένου απάντησης
 			outputLi.innerHTML = `<p>${answerText}</p>`;
 
 			if (data.openUrl) {
 				// Αλλάζει το URL σε ολόκληρη την οθόνη, σπάγοντας το iframe
 				window.top.location.href = data.openUrl;
 			}
+
+			// ---- ΝΕΑ ΠΡΟΣΘΗΚΗ: Διαχείριση Αλλαγής Θέματος ----
+			if (data.setTheme) {
+				applyTheme(data.setTheme);
+			}
+
 
 
 			// Εμφάνιση Εικόνων αν υπάρχουν (Από Image Generation)
