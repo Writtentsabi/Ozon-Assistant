@@ -100,6 +100,49 @@ const setThemeTool = {
 	}]
 };
 
+// Ορισμός του εργαλείου για την αλλαγή θέσης του Toolbar (Top/Bottom)
+const setToolbarPositionTool = {
+	functionDeclarations: [{
+		name: "set_toolbar_position",
+		description: "Changes the location/position of the toolbar/navbar to either the top or the bottom of the page based on the user's request (e.g., 'βάλτο πάνω', 'θέλω το toolbar κάτω', 'move navigation to the top').",
+		parameters: {
+			type: "OBJECT",
+			properties: {
+				position: {
+					type: "STRING",
+					enum: ["top",
+						"bottom"],
+					description: "The target position for the toolbar."
+				}
+			},
+			required: ["position"]
+		}
+	}]
+};
+
+// Ορισμός του εργαλείου για Δυναμική Αλλαγή Μηχανής Αναζήτησης (Υποστηρίζει οποιοδήποτε site)
+const setSearchEngineTool = {
+	functionDeclarations: [{
+		name: "set_search_engine",
+		description: "Changes the default search engine of the browser to any website requested by the user (e.g., 'βάλε youtube', 'άλλαξε τη μηχανή σε wikipedia', 'θέλω αναζήτηση μέσω github'). Identifies the site and returns its search URL template with %s.",
+		parameters: {
+			type: "OBJECT",
+			properties: {
+				engine: {
+					type: "STRING",
+					description: "The name of the website/search engine requested by the user (e.g., 'youtube', 'wikipedia', 'github')."
+				},
+				searchUrl: {
+					type: "STRING",
+					description: "The full search URL template for that specific website, where the query placeholder is replaced by %s."
+				}
+			},
+			required: ["engine",
+				"searchUrl"]
+		}
+	}]
+};
+
 // ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat με Καθολικό Fallback σε PaxSenix αν κρασάρει η Google
 app.post('/api/chat', async (req, res) => {
 	const {
@@ -115,8 +158,11 @@ app.post('/api/chat', async (req, res) => {
 					text: `Analyze the user input: "${prompt}".
 					- If the user wants to generate, draw, or create an image/visual, reply ONLY with "IMAGE".
 					- If the user explicitly wants to open, launch, go to, or visit a specific website/URL (e.g., "Άνοιξε το YouTube", "open github"), reply ONLY with "NAVIGATE".
-					- If the user wants to change, toggle, or set the theme/mode (e.g., "βάλε dark mode", "γύρνα το σε άσπρο", "switch to light mode", "system default"), reply ONLY with "THEME".
+					- If the user wants to change, toggle, or set the theme/mode (e.g., "βάλε dark mode", "γύρνα το σε άσπρο", "switch to light mode"), reply ONLY with "THEME".
+					- If the user wants to move, change, or set the position of the toolbar/navbar/menu to the top or bottom/pants of the page (e.g., "βάλε το toolbar πάνω", "μετακίνησε τη μπάρα κάτω", "θέλω το μενού στο πάτο"), reply ONLY with "TOOLBAR".
+					- If the user wants to change, toggle, or set the default search engine to ANY website (e.g., "βάλε google για αναζήτηση", "άλλαξε τη μηχανή σε duckduckgo", "θέλω αναζήτηση μέσω youtube", "set default search engine to github"), reply ONLY with "SEARCH_ENGINE".
 					- Otherwise, for any general question, chat, or web search request, reply ONLY with "TEXT".`
+
 				}]
 			}]
 		});
@@ -262,80 +308,145 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
-		} else {
-			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
-			const chat = ai.chats.create({
+		} else if (decision.includes("TOOLBAR")) {
+			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΘΕΣΗΣ TOOLBAR ---
+			const response = await ai.models.generateContent({
 				model: CHAT_MODEL,
-				history: history || [],
+				contents: [{
+					role: "user", parts: [{
+						text: prompt
+					}]
+				}],
 				config: {
-					systemInstruction: SYSTEM_INSTRUCTION,
-					tools: [{
-						googleSearch: {}
-					}],
+					systemInstruction: "You are the OxyZen Browser UI controller. Your ONLY job is to return a function call to 'set_toolbar_position' with the appropriate position (top or bottom) based on the user's request. Do not write text, do not write code blocks, just call the tool.",
+					tools: [setToolbarPositionTool],
 					safetySettings: safety,
 				},
 			});
 
-			let response;
-			if (!images || !Array.isArray(images)) {
-				response = await chat.sendMessage({
-					message: prompt
-				});
-			} else {
-				const imageParts = images.map(imgBase64 => ({
-					inlineData: {
-						data: imgBase64, mimeType: mimeType || "image/jpeg"
-					}
-				}));
-				response = await chat.sendMessage({
-					message: [...imageParts, prompt]
-				});
+			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
+
+			if (candidatePart && candidatePart.functionCall) {
+				const call = candidatePart.functionCall;
+				if (call.name === "set_toolbar_position") {
+					const targetPosition = call.args.position;
+					const greekPosition = targetPosition === "top" ? "κορυφή": "πάτο";
+					return res.json({
+						text: `<div class="thought">Moving toolbar to ${targetPosition}...</div><p>Μετακίνηση του toolbar στην <strong>${greekPosition}</strong> της σελίδας.</p>`,
+						setToolbarPosition: targetPosition, // Επιστρέφει την τιμή στο front-end
+						token: response.usageMetadata?.totalTokenCount || 0
+					});
+				}
 			}
 
+			// Fallback αν αποτύχει η κλήση
 			return res.json({
-				text: response.text,
+				text: `<div class="thought">Fallback toolbar handling.</div><p>Το toolbar μετακινήθηκε στην κορυφή από προεπιλογή.</p>`,
+				setToolbarPosition: "top",
 				token: response.usageMetadata?.totalTokenCount || 0
 			});
-		}
 
-	} catch (globalError) {
-		// ΚΑΘΟΛΙΚΟ FALLBACK: Αν σκάσει ΟΠΟΙΟΔΗΠΟΤΕ βήμα της Google (λόγω του Billing Block 403)
-		console.warn("🚨 Κρίσιμο σφάλμα Google API. Ενεργοποίηση Καθολικού PaxSenix Fallback:", globalError.message);
-
-		try {
-			// Άμεση κλήση του PaxSenix AI με τις σωστές οδηγίες εμφάνισης (SYSTEM_INSTRUCTION)
-			const paxResponse = await paxsenix.createChatCompletion({
-				model: 'gpt-3.5-turbo',
-				messages: [{
-					role: 'system', content: SYSTEM_INSTRUCTION
-				},
-					{
-						role: 'user', content: prompt
+		} else if (decision.includes("SEARCH_ENGINE")) {
+			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΜΗΧΑΝΗΣ ΑΝΑΖΗΤΗΣΗΣ (ΔΥΝΑΜΙΚΗ) ---
+			const response = await ai.models.generateContent({
+				model: CHAT_MODEL,
+				contents: [{
+					role: "user", parts: [{
+						text: prompt
 					}]
+				}],
+				config: {
+					systemInstruction: `You are the OxyZen Browser configuration assistant. Your job is to return a function call to 'set_search_engine' based on the website the user wants to use for their default searches.
+					You must dynamically construct or provide the correct URL template using '%s' as the query placeholder.
+
+					Common examples to follow:
+					- google: https://www.google.com/search?q=%s
+					- youtube: https://www.youtube.com/results?search_query=%s
+					- wikipedia: https://en.wikipedia.org/w/index.php?search=%s
+					- github: https://github.com/search?q=%s
+					- reddit: https://www.reddit.com/search/?q=%s
+					- duckduckgo: https://html.duckduckgo.com/html/?q=%s
+
+					If the user requests a site not on this list, infer its standard search URL structure and replace the query parameter with %s. Do not write text, do not write code blocks, just call the tool.`,
+					tools: [setSearchEngineTool],
+					safetySettings: safety,
+				},
 			});
 
+			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
+
+			if (candidatePart && candidatePart.functionCall) {
+				const call = candidatePart.functionCall;
+				if (call.name === "set_search_engine") {
+					const targetEngine = call.args.engine;
+					const targetUrl = call.args.searchUrl;
+
+					return res.json({
+						text: `<div class="thought">Setting default search engine to ${targetEngine}...</div><p>Η προεπιλεγμένη αναζήτηση ορίστηκε πλέον μέσω <strong>${targetEngine}</strong>.</p>`,
+						setSearchEngine: targetEngine,
+						searchUrlTemplate: targetUrl, // Επιστρέφει το δυναμικό URL στο front-end
+						token: response.usageMetadata?.totalTokenCount || 0
+					});
+				}
+			}
+
+			// Fallback σε Google αν κάτι αποτύχει
 			return res.json({
-				text: paxResponse.choices[0].message.content,
-				token: 0,
-				fallbackUsed: true
+				text: `<div class="thought">Fallback search engine handling.</div><p>Η προεπιλεγμένη μηχανή αναζήτησης ορίστηκε σε Google.</p>`,
+				setSearchEngine: "google",
+				searchUrlTemplate: "https://www.google.com/search?q=%s",
+				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
-		} catch (paxError) {
-			console.error("Fatal Error (Both Gemini and PaxSenix failed):", paxError);
-			return res.status(500).json({
-				error: "Όλες οι υπηρεσίες τεχνητής νοημοσύνης είναι προσωρινά μη διαθέσιμες."
+		}
+
+
+	} else {
+		// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
+		// (Εδώ συνεχίζει το υπάρχον code block σου...)
+
+		// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
+		const chat = ai.chats.create({
+			model: CHAT_MODEL,
+			history: history || [],
+			config: {
+				systemInstruction: SYSTEM_INSTRUCTION,
+				tools: [{
+					googleSearch: {}
+				}],
+				safetySettings: safety,
+			},
+		});
+
+		let response;
+		if (!images || !Array.isArray(images)) {
+			response = await chat.sendMessage({
+				message: prompt
+			});
+		} else {
+			const imageParts = images.map(imgBase64 => ({
+				inlineData: {
+					data: imgBase64, mimeType: mimeType || "image/jpeg"
+				}
+			}));
+			response = await chat.sendMessage({
+				message: [...imageParts, prompt]
 			});
 		}
-	}
-});
 
-// Endpoint PaxSenix (Από server 6)
-app.post('/api/paxsenix-chat', async (req, res) => {
-	const {
-		prompt
-	} = req.body;
+		return res.json({
+			text: response.text,
+			token: response.usageMetadata?.totalTokenCount || 0
+		});
+	}
+
+} catch (globalError) {
+	// ΚΑΘΟΛΙΚΟ FALLBACK: Αν σκάσει ΟΠΟΙΟΔΗΠΟΤΕ βήμα της Google (λόγω του Billing Block 403)
+	console.warn("🚨 Κρίσιμο σφάλμα Google API. Ενεργοποίηση Καθολικού PaxSenix Fallback:", globalError.message);
+
 	try {
-		const response = await paxsenix.createChatCompletion({
+		// Άμεση κλήση του PaxSenix AI με τις σωστές οδηγίες εμφάνισης (SYSTEM_INSTRUCTION)
+		const paxResponse = await paxsenix.createChatCompletion({
 			model: 'gpt-3.5-turbo',
 			messages: [{
 				role: 'system', content: SYSTEM_INSTRUCTION
@@ -344,47 +455,78 @@ app.post('/api/paxsenix-chat', async (req, res) => {
 					role: 'user', content: prompt
 				}]
 		});
-		res.json({
-			text: response.choices[0].message.content
+
+		return res.json({
+			text: paxResponse.choices[0].message.content,
+			token: 0,
+			fallbackUsed: true
 		});
-	} catch (error) {
-		res.status(500).json({
-			error: error.message
+
+	} catch (paxError) {
+		console.error("Fatal Error (Both Gemini and PaxSenix failed):", paxError);
+		return res.status(500).json({
+			error: "Όλες οι υπηρεσίες τεχνητής νοημοσύνης είναι προσωρινά μη διαθέσιμες."
 		});
 	}
+}
+});
+
+// Endpoint PaxSenix (Από server 6)
+app.post('/api/paxsenix-chat', async (req, res) => {
+const {
+prompt
+} = req.body;
+try {
+const response = await paxsenix.createChatCompletion({
+model: 'gpt-3.5-turbo',
+messages: [{
+role: 'system', content: SYSTEM_INSTRUCTION
+},
+{
+role: 'user', content: prompt
+}]
+});
+res.json({
+text: response.choices[0].message.content
+});
+} catch (error) {
+res.status(500).json({
+error: error.message
+});
+}
 });
 
 // Endpoint Perchance (Από server 6)
 app.post('/api/perchance', async (req, res) => {
-	const {
-		prompt
-	} = req.body;
-	const count = 5;
-	try {
-		const response = await fetch(`https://perchance.org/api/generateList.php?generator=${prompt}&count=${count}`);
-		if (!response.ok) return res.status(response.status).json({
-			error: response.status
-		});
-		const data = await response.json();
-		res.json({
-			text: data
-		});
-	} catch (error) {
-		res.status(500).json({
-			error: "Error fetching from Perchance: " + error.message
-		});
-	}
+const {
+prompt
+} = req.body;
+const count = 5;
+try {
+const response = await fetch(`https://perchance.org/api/generateList.php?generator=${prompt}&count=${count}`);
+if (!response.ok) return res.status(response.status).json({
+error: response.status
+});
+const data = await response.json();
+res.json({
+text: data
+});
+} catch (error) {
+res.status(500).json({
+error: "Error fetching from Perchance: " + error.message
+});
+}
 });
 
 // Endpoint για το "ξύπνημα" του server (Keep-alive / Health Check)
 app.get('/api/wakeup', (req, res) => {
-	res.status(200).json({
-		status: "online",
-		message: "Zen Server is awake and ready",
-		timestamp: new Date().toISOString()
-	});
+res.status(200).json({
+status: "online",
+message: "Zen Server is awake and ready",
+timestamp: new Date().toISOString()
+});
 });
 
 app.listen(PORT, () => {
-	console.log(`Server running on port ${PORT}`);
+console.log(`Server running on port ${PORT}`);
 });
