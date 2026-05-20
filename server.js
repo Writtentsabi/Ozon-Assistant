@@ -79,6 +79,27 @@ const openUrlTool = {
 	}]
 };
 
+// Ορισμός του εργαλείου για την αλλαγή του Theme (Dark/Light/System)
+const setThemeTool = {
+	functionDeclarations: [{
+		name: "set_theme",
+		description: "Changes the application theme to dark, light, or system default mode when the user requests it (e.g., 'βάλε dark mode', 'γύρνα το σε light', 'θέλω σκοτεινό θέμα').",
+		parameters: {
+			type: "OBJECT",
+			properties: {
+				theme: {
+					type: "STRING",
+					enum: ["dark",
+						"light",
+						"system"],
+					description: "The target theme mode requested by the user."
+				}
+			},
+			required: ["theme"]
+		}
+	}]
+};
+
 // ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat με Καθολικό Fallback σε PaxSenix αν κρασάρει η Google
 app.post('/api/chat', async (req, res) => {
 	const {
@@ -93,7 +114,8 @@ app.post('/api/chat', async (req, res) => {
 				parts: [{
 					text: `Analyze the user input: "${prompt}".
 					- If the user wants to generate, draw, or create an image/visual, reply ONLY with "IMAGE".
-					- If the user explicitly wants to open, launch, go to, or visit a specific website/URL (e.g., "Άνοιξε το YouTube", "Πήγαινέ με στο google.com", "open github"), reply ONLY with "NAVIGATE".
+					- If the user explicitly wants to open, launch, go to, or visit a specific website/URL (e.g., "Άνοιξε το YouTube", "open github"), reply ONLY with "NAVIGATE".
+					- If the user wants to change, toggle, or set the theme/mode (e.g., "βάλε dark mode", "γύρνα το σε άσπρο", "switch to light mode", "system default"), reply ONLY with "THEME".
 					- Otherwise, for any general question, chat, or web search request, reply ONLY with "TEXT".`
 				}]
 			}]
@@ -115,7 +137,9 @@ app.post('/api/chat', async (req, res) => {
 				});
 			}
 
-			const currentParts = [{ text: prompt }];
+			const currentParts = [{
+				text: prompt
+			}];
 			if (images && Array.isArray(images)) {
 				images.forEach(imgBase64 => {
 					currentParts.push({
@@ -125,7 +149,9 @@ app.post('/api/chat', async (req, res) => {
 					});
 				});
 			}
-			contents.push({ role: "user", parts: currentParts });
+			contents.push({
+				role: "user", parts: currentParts
+			});
 
 			const response = await ai.models.generateContent({
 				model: IMAGE_MODEL,
@@ -168,7 +194,9 @@ app.post('/api/chat', async (req, res) => {
 			const response = await ai.models.generateContent({
 				model: CHAT_MODEL,
 				contents: [{
-					role: "user", parts: [{ text: prompt }]
+					role: "user", parts: [{
+						text: prompt
+					}]
 				}],
 				config: {
 					systemInstruction: "You are the OxyZen Browser navigator. Your ONLY job is to return a function call to 'open_url' for the website the user requested. Do not write text, do not write code blocks, just call the tool.",
@@ -197,6 +225,43 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
+		} else if (decision.includes("THEME")) {
+			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΘΕΜΑΤΟΣ ---
+			const response = await ai.models.generateContent({
+				model: CHAT_MODEL,
+				contents: [{
+					role: "user", parts: [{
+						text: prompt
+					}]
+				}],
+				config: {
+					systemInstruction: "You are the OxyZen Browser UI controller. Your ONLY job is to return a function call to 'set_theme' with the appropriate mode (dark, light, or system) based on the user's request. Do not write text, do not write code blocks, just call the tool.",
+					tools: [setThemeTool],
+					safetySettings: safety,
+				},
+			});
+
+			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
+
+			if (candidatePart && candidatePart.functionCall) {
+				const call = candidatePart.functionCall;
+				if (call.name === "set_theme") {
+					const targetTheme = call.args.theme;
+					return res.json({
+						text: `<div class="thought">Changing theme to ${targetTheme}...</div><p>Changing appearance to <strong>${targetTheme} mode</strong>.</p>`,
+						setTheme: targetTheme, // Επιστρέφει την τιμή στο front-end
+						token: response.usageMetadata?.totalTokenCount || 0
+					});
+				}
+			}
+
+			// Fallback αν αποτύχει η κλήση της συνάρτησης
+			return res.json({
+				text: `<div class="thought">Fallback theme handling.</div><p>Setting theme to dark mode by default.</p>`,
+				setTheme: "dark",
+				token: response.usageMetadata?.totalTokenCount || 0
+			});
+
 		} else {
 			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
 			const chat = ai.chats.create({
@@ -204,19 +269,27 @@ app.post('/api/chat', async (req, res) => {
 				history: history || [],
 				config: {
 					systemInstruction: SYSTEM_INSTRUCTION,
-					tools: [{ googleSearch: {} }],
+					tools: [{
+						googleSearch: {}
+					}],
 					safetySettings: safety,
 				},
 			});
 
 			let response;
 			if (!images || !Array.isArray(images)) {
-				response = await chat.sendMessage({ message: prompt });
+				response = await chat.sendMessage({
+					message: prompt
+				});
 			} else {
 				const imageParts = images.map(imgBase64 => ({
-					inlineData: { data: imgBase64, mimeType: mimeType || "image/jpeg" }
+					inlineData: {
+						data: imgBase64, mimeType: mimeType || "image/jpeg"
+					}
 				}));
-				response = await chat.sendMessage({ message: [...imageParts, prompt] });
+				response = await chat.sendMessage({
+					message: [...imageParts, prompt]
+				});
 			}
 
 			return res.json({
@@ -228,15 +301,17 @@ app.post('/api/chat', async (req, res) => {
 	} catch (globalError) {
 		// ΚΑΘΟΛΙΚΟ FALLBACK: Αν σκάσει ΟΠΟΙΟΔΗΠΟΤΕ βήμα της Google (λόγω του Billing Block 403)
 		console.warn("🚨 Κρίσιμο σφάλμα Google API. Ενεργοποίηση Καθολικού PaxSenix Fallback:", globalError.message);
-		
+
 		try {
 			// Άμεση κλήση του PaxSenix AI με τις σωστές οδηγίες εμφάνισης (SYSTEM_INSTRUCTION)
 			const paxResponse = await paxsenix.createChatCompletion({
 				model: 'gpt-3.5-turbo',
-				messages: [
-					{ role: 'system', content: SYSTEM_INSTRUCTION },
-					{ role: 'user', content: prompt }
-				]
+				messages: [{
+					role: 'system', content: SYSTEM_INSTRUCTION
+				},
+					{
+						role: 'user', content: prompt
+					}]
 			});
 
 			return res.json({
@@ -244,7 +319,7 @@ app.post('/api/chat', async (req, res) => {
 				token: 0,
 				fallbackUsed: true
 			});
-            
+
 		} catch (paxError) {
 			console.error("Fatal Error (Both Gemini and PaxSenix failed):", paxError);
 			return res.status(500).json({
