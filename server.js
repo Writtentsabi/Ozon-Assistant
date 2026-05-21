@@ -238,6 +238,7 @@ app.post('/api/chat', async (req, res) => {
 			// --- ΛΟΓΙΚΗ ΠΛΟΗΓΗΣΗΣ ---
 			const response = await ai.models.generateContent({
 				model: CHAT_MODEL,
+				history: history || [],
 				contents: [{
 					role: "user", parts: [{
 						text: prompt
@@ -274,6 +275,7 @@ app.post('/api/chat', async (req, res) => {
 			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΘΕΜΑΤΟΣ ---
 			const response = await ai.models.generateContent({
 				model: CHAT_MODEL,
+				history: history || [],
 				contents: [{
 					role: "user", parts: [{
 						text: prompt
@@ -310,6 +312,7 @@ app.post('/api/chat', async (req, res) => {
 			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΘΕΣΗΣ TOOLBAR ---
 			const response = await ai.models.generateContent({
 				model: CHAT_MODEL,
+				history: history || [],
 				contents: [{
 					role: "user", parts: [{
 						text: prompt
@@ -347,6 +350,7 @@ app.post('/api/chat', async (req, res) => {
 			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΜΗΧΑΝΗΣ ΑΝΑΖΗΤΗΣΗΣ (ΔΥΝΑΜΙΚΗ) ---
 			const response = await ai.models.generateContent({
 				model: CHAT_MODEL,
+				history: history || [],
 				contents: [{
 					role: "user", parts: [{
 						text: prompt
