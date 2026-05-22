@@ -1,4 +1,4 @@
-// server.js (Πλήρως Ενοποιημένη Έκδοση με Gemini 2.5 Flash-Lite Router)
+// server.js (Πλήρως Ενοποιημένη Έκδοση με Gemini 2.5 Flash-Lite Router - Διορθωμένο Ιστορικό)
 import 'dotenv/config';
 import express from 'express';
 import {
@@ -21,7 +21,7 @@ const ai = new GoogleGenAI( {
 
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 
-// Ρυθμίσεις Ασφαλείας (Safety Settings) - Από server (6).js
+// Ρυθμίσεις Ασφαλείας (Safety Settings)
 const safety = [{
 	category: "HARM_CATEGORY_HARASSMENT",
 	threshold: "BLOCK_ONLY_HIGH",
@@ -45,7 +45,7 @@ app.use(express.json({
 	limit: '50mb'
 }));
 
-// System Instructions - Από server (6).js
+// System Instructions
 const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for the OxyZen Browser.
 
 CORE RULES:
@@ -120,7 +120,7 @@ const setToolbarPositionTool = {
 	}]
 };
 
-// Ορισμός του εργαλείου για Δυναμική Αλλαγή Μηχανής Αναζήτησης (Υποστηρίζει οποιοδήποτε site)
+// Ορισμός του εργαλείου για Δυναμική Αλλαγή Μηχανής Αναζήτησης
 const setSearchEngineTool = {
 	functionDeclarations: [{
 		name: "set_search_engine",
@@ -184,7 +184,7 @@ const removeBookmarkTool = {
 	}]
 };
 
-// ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat με Καθολικό Fallback σε PaxSenix αν κρασάρει η Google
+// ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat
 app.post('/api/chat', async (req, res) => {
 	const {
 		prompt, images, mimeType, history, aspectRatio
@@ -279,14 +279,9 @@ app.post('/api/chat', async (req, res) => {
 
 		} else if (decision.includes("NAVIGATE")) {
 			// --- ΛΟΓΙΚΗ ΠΛΟΗΓΗΣΗΣ ---
-			const response = await ai.chats.create({
+			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
-				contents: [{
-					role: "user", parts: [{
-						text: prompt
-					}]
-				}],
 				config: {
 					systemInstruction: "You are the OxyZen Browser navigator. Your ONLY job is to return a function call to 'open_url' for the website the user requested. Do not write text, do not write code blocks, just call the tool.",
 					tools: [openUrlTool],
@@ -294,10 +289,13 @@ app.post('/api/chat', async (req, res) => {
 				},
 			});
 
-			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
+			const response = await chat.sendMessage({
+				message: prompt
+			});
+			const functionCalls = response.functionCalls;
 
-			if (candidatePart && candidatePart.functionCall) {
-				const call = candidatePart.functionCall;
+			if (functionCalls && functionCalls.length > 0) {
+				const call = functionCalls[0];
 				if (call.name === "open_url") {
 					const targetUrl = call.args.url;
 					return res.json({
@@ -316,14 +314,9 @@ app.post('/api/chat', async (req, res) => {
 
 		} else if (decision.includes("THEME")) {
 			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΘΕΜΑΤΟΣ ---
-			const response = await ai.chats.create({
+			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
-				contents: [{
-					role: "user", parts: [{
-						text: prompt
-					}]
-				}],
 				config: {
 					systemInstruction: "You are the OxyZen Browser UI controller. Your ONLY job is to return a function call to 'set_theme' with the appropriate mode (dark, light, or system) based on the user's request. Do not write text, do not write code blocks, just call the tool.",
 					tools: [setThemeTool],
@@ -331,10 +324,13 @@ app.post('/api/chat', async (req, res) => {
 				},
 			});
 
-			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
+			const response = await chat.sendMessage({
+				message: prompt
+			});
+			const functionCalls = response.functionCalls;
 
-			if (candidatePart && candidatePart.functionCall) {
-				const call = candidatePart.functionCall;
+			if (functionCalls && functionCalls.length > 0) {
+				const call = functionCalls[0];
 				if (call.name === "set_theme") {
 					const targetTheme = call.args.theme;
 					return res.json({
@@ -353,14 +349,9 @@ app.post('/api/chat', async (req, res) => {
 
 		} else if (decision.includes("TOOLBAR")) {
 			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΘΕΣΗΣ TOOLBAR ---
-			const response = await ai.chats.create({
+			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
-				contents: [{
-					role: "user", parts: [{
-						text: prompt
-					}]
-				}],
 				config: {
 					systemInstruction: "You are the OxyZen Browser UI controller. Your ONLY job is to return a function call to 'set_toolbar_position' with the appropriate position (top or bottom) based on the user's request. Do not write text, do not write code blocks, just call the tool.",
 					tools: [setToolbarPositionTool],
@@ -368,10 +359,13 @@ app.post('/api/chat', async (req, res) => {
 				},
 			});
 
-			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
+			const response = await chat.sendMessage({
+				message: prompt
+			});
+			const functionCalls = response.functionCalls;
 
-			if (candidatePart && candidatePart.functionCall) {
-				const call = candidatePart.functionCall;
+			if (functionCalls && functionCalls.length > 0) {
+				const call = functionCalls[0];
 				if (call.name === "set_toolbar_position") {
 					const targetPosition = call.args.position;
 					const greekPosition = targetPosition === "top" ? "κορυφή": "πάτο";
@@ -390,15 +384,10 @@ app.post('/api/chat', async (req, res) => {
 			});
 
 		} else if (decision.includes("SEARCH_ENGINE")) {
-			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΜΗΧΑΝΗΣ ΑΝΑΖΗΤΗΣΗΣ (ΔΥΝΑΜΙΚΗ) ---
-			const response = await ai.chats.create({
+			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΜΗΧΑΝΗΣ ΑΝΑΖΗΤΗΣΗΣ ---
+			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
-				contents: [{
-					role: "user", parts: [{
-						text: prompt
-					}]
-				}],
 				config: {
 					systemInstruction: `You are the OxyZen Browser configuration assistant. Your job is to return a function call to 'set_search_engine' based on the website the user wants to use for their default searches.
 					You must dynamically construct or provide the correct URL template using '%s' as the query placeholder.
@@ -417,10 +406,13 @@ app.post('/api/chat', async (req, res) => {
 				},
 			});
 
-			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
+			const response = await chat.sendMessage({
+				message: prompt
+			});
+			const functionCalls = response.functionCalls;
 
-			if (candidatePart && candidatePart.functionCall) {
-				const call = candidatePart.functionCall;
+			if (functionCalls && functionCalls.length > 0) {
+				const call = functionCalls[0];
 				if (call.name === "set_search_engine") {
 					const targetEngine = call.args.engine;
 					const targetUrl = call.args.searchUrl;
@@ -443,14 +435,9 @@ app.post('/api/chat', async (req, res) => {
 
 		} else if (decision.includes("BOOKMARK")) {
 			// --- ΛΟΓΙΚΗ ΠΡΟΣΘΗΚΗΣ ΣΕΛΙΔΟΔΕΙΚΤΗ ---
-			const response = await ai.chats.create({
+			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
-				contents: [{
-					role: "user", parts: [{
-						text: prompt
-					}]
-				}],
 				config: {
 					systemInstruction: "You are the OxyZen Browser assistant. Your ONLY job is to return a function call to 'add_bookmark' with the correct title and full URL of the website the user wants to save. If the user doesn't provide a full URL, infer the most logical one (e.g., 'YouTube' -> 'https://www.youtube.com'). Do not write text, do not write code blocks, just call the tool.",
 					tools: [addBookmarkTool],
@@ -458,10 +445,13 @@ app.post('/api/chat', async (req, res) => {
 				},
 			});
 
-			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
+			const response = await chat.sendMessage({
+				message: prompt
+			});
+			const functionCalls = response.functionCalls;
 
-			if (candidatePart && candidatePart.functionCall) {
-				const call = candidatePart.functionCall;
+			if (functionCalls && functionCalls.length > 0) {
+				const call = functionCalls[0];
 				if (call.name === "add_bookmark") {
 					const bookmarkTitle = call.args.title;
 					const bookmarkUrl = call.args.url;
@@ -482,14 +472,9 @@ app.post('/api/chat', async (req, res) => {
 
 		} else if (decision.includes("REMOVE_BOOKMARK")) {
 			// --- ΛΟΓΙΚΗ ΑΦΑΙΡΕΣΗΣ ΣΕΛΙΔΟΔΕΙΚΤΗ ---
-			const response = await ai.chats.create({
+			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
-				contents: [{
-					role: "user", parts: [{
-						text: prompt
-					}]
-				}],
 				config: {
 					systemInstruction: "You are the OxyZen Browser assistant. Your ONLY job is to return a function call to 'remove_bookmark' with the title or core name of the website the user wants to delete from their bookmarks. Do not write text, do not write code blocks, just call the tool.",
 					tools: [removeBookmarkTool],
@@ -497,10 +482,13 @@ app.post('/api/chat', async (req, res) => {
 				},
 			});
 
-			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
+			const response = await chat.sendMessage({
+				message: prompt
+			});
+			const functionCalls = response.functionCalls;
 
-			if (candidatePart && candidatePart.functionCall) {
-				const call = candidatePart.functionCall;
+			if (functionCalls && functionCalls.length > 0) {
+				const call = functionCalls[0];
 				if (call.name === "remove_bookmark") {
 					const bookmarkTitle = call.args.title;
 
@@ -519,7 +507,6 @@ app.post('/api/chat', async (req, res) => {
 
 		} else {
 			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
-
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
@@ -555,7 +542,7 @@ app.post('/api/chat', async (req, res) => {
 		}
 
 	} catch (globalError) {
-		// ΚΑΘΟΛΙΚΟ FALLBACK: Αν σκάσει ΟΠΟΙΟΔΗΠΟΤΕ βήμα της Google
+		// ΚΑΘΟΛΙΚΟ FALLBACK
 		console.warn("🚨 Κρίσιμο σφάλμα Google API. Ενεργοποίηση Καθολικού PaxSenix Fallback:", globalError.message);
 
 		try {
@@ -584,8 +571,7 @@ app.post('/api/chat', async (req, res) => {
 	}
 });
 
-
-// Endpoint PaxSenix (Από server 6)
+// Endpoint PaxSenix
 app.post('/api/paxsenix-chat', async (req, res) => {
 	const {
 		prompt
@@ -610,7 +596,7 @@ app.post('/api/paxsenix-chat', async (req, res) => {
 	}
 });
 
-// Endpoint Perchance (Από server 6)
+// Endpoint Perchance
 app.post('/api/perchance', async (req, res) => {
 	const {
 		prompt
