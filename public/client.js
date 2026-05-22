@@ -168,14 +168,36 @@ async function sendChat(prompt, imageData = null, mimeType = null) {
 			if (data.openUrl) {
 				// Αλλάζει το URL σε ολόκληρη την οθόνη, σπάγοντας το iframe
 				window.top.location.href = data.openUrl;
+				const functionState = "NAVIGATE";
+				const dataState = data.openUrl;
 			}
 
 			// ---- ΝΕΑ ΠΡΟΣΘΗΚΗ: Διαχείριση Αλλαγής Θέματος ----
 			if (data.setTheme) {
 				applyTheme(data.setTheme);
+				const functionState = "THEME";
+				const dataState = data.setTheme;
 			}
 
+			if (data.setToolbarPosition) {
+				const functionState = "TOOLBAR";
+				const dataState = data.setToolbarPosition;
+			}
 
+			if (data.searchUrlTemplate) {
+				const functionState = "SEARCH_ENGINE";
+				const dataState = data.searchUrlTemplate;
+			}
+
+			if (data.addTitle) {
+				const functionState = "BOOKMARK";
+				const dataState = data.addUrl;
+			}
+
+			if (data.removeTitle) {
+				const functionState = "REMOVE_BOOKMARK";
+				const dataState = data.removeTitle;
+			}
 
 			// Εμφάνιση Εικόνων αν υπάρχουν (Από Image Generation)
 			if (data.images && data.images.length > 0) {
@@ -202,6 +224,14 @@ async function sendChat(prompt, imageData = null, mimeType = null) {
 					text: answerText
 				}]
 			});
+			window.parent.postMessage({
+				type: "OZON_ASSISTANT_RESPONSE",
+				data: {
+					text: answerText,
+					data: dataState,
+					function: functionState
+				}
+			}, "*");
 		}
 
 	} catch (error) {
