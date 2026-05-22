@@ -241,7 +241,7 @@ app.post('/api/chat', async (req, res) => {
 				role: "user", parts: currentParts
 			});
 
-			const response = await ai.models.generateContent({
+			const response = await ai.chats.create({
 				model: IMAGE_MODEL,
 				contents: contents,
 				config: {
@@ -279,7 +279,7 @@ app.post('/api/chat', async (req, res) => {
 
 		} else if (decision.includes("NAVIGATE")) {
 			// --- ΛΟΓΙΚΗ ΠΛΟΗΓΗΣΗΣ ---
-			const response = await ai.models.generateContent({
+			const response = await ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
 				contents: [{
@@ -316,7 +316,7 @@ app.post('/api/chat', async (req, res) => {
 
 		} else if (decision.includes("THEME")) {
 			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΘΕΜΑΤΟΣ ---
-			const response = await ai.models.generateContent({
+			const response = await ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
 				contents: [{
@@ -353,7 +353,7 @@ app.post('/api/chat', async (req, res) => {
 
 		} else if (decision.includes("TOOLBAR")) {
 			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΘΕΣΗΣ TOOLBAR ---
-			const response = await ai.models.generateContent({
+			const response = await ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
 				contents: [{
@@ -391,7 +391,7 @@ app.post('/api/chat', async (req, res) => {
 
 		} else if (decision.includes("SEARCH_ENGINE")) {
 			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΜΗΧΑΝΗΣ ΑΝΑΖΗΤΗΣΗΣ (ΔΥΝΑΜΙΚΗ) ---
-			const response = await ai.models.generateContent({
+			const response = await ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
 				contents: [{
@@ -443,7 +443,7 @@ app.post('/api/chat', async (req, res) => {
 
 		} else if (decision.includes("BOOKMARK")) {
 			// --- ΛΟΓΙΚΗ ΠΡΟΣΘΗΚΗΣ ΣΕΛΙΔΟΔΕΙΚΤΗ ---
-			const response = await ai.models.generateContent({
+			const response = await ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
 				contents: [{
@@ -482,7 +482,7 @@ app.post('/api/chat', async (req, res) => {
 
 		} else if (decision.includes("REMOVE_BOOKMARK")) {
 			// --- ΛΟΓΙΚΗ ΑΦΑΙΡΕΣΗΣ ΣΕΛΙΔΟΔΕΙΚΤΗ ---
-			const response = await ai.models.generateContent({
+			const response = await ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
 				contents: [{
