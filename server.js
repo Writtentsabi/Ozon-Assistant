@@ -468,8 +468,8 @@ app.post('/api/chat', async (req, res) => {
 
 					return res.json({
 						text: `<div class="thought">Adding bookmark for ${bookmarkTitle}...</div><p>Η ιστοσελίδα <strong>${bookmarkTitle}</strong> προστέθηκε επιτυχώς στους σελιδοδείκτες σου!</p>`,
-						title: bookmarkTitle,
-						url: bookmarkUrl,
+						addTitle: bookmarkTitle,
+						addUrl: bookmarkUrl,
 						token: response.usageMetadata?.totalTokenCount || 0
 					});
 				}
@@ -506,7 +506,7 @@ app.post('/api/chat', async (req, res) => {
 
 					return res.json({
 						text: `<div class="thought">Removing bookmark for ${bookmarkTitle}...</div><p>Ο σελιδοδείκτης <strong>${bookmarkTitle}</strong> αφαιρέθηκε.</p>`,
-						title: bookmarkTitle,
+						removeTitle: bookmarkTitle,
 						token: response.usageMetadata?.totalTokenCount || 0
 					});
 				}
