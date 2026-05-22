@@ -161,42 +161,39 @@ async function sendChat(prompt, imageData = null, mimeType = null) {
 				answerText
 			} = parseResponse(data.text);
 
-			// Εμφάνιση κειμένου απάντησης
-			// Εμφάνιση κειμένου απάντησης
 			outputLi.innerHTML = `<p>${answerText}</p>`;
+			
+			let functionState = null;
+			let dataState = null;
 
 			if (data.openUrl) {
-				// Αλλάζει το URL σε ολόκληρη την οθόνη, σπάγοντας το iframe
-				window.top.location.href = data.openUrl;
-				const functionState = "NAVIGATE";
-				const dataState = data.openUrl;
+				functionState = "NAVIGATE";
+				dataState = data.openUrl;
 			}
 
-			// ---- ΝΕΑ ΠΡΟΣΘΗΚΗ: Διαχείριση Αλλαγής Θέματος ----
 			if (data.setTheme) {
-				applyTheme(data.setTheme);
-				const functionState = "THEME";
-				const dataState = data.setTheme;
+				functionState = "THEME";
+				dataState = data.setTheme;
 			}
 
 			if (data.setToolbarPosition) {
-				const functionState = "TOOLBAR";
-				const dataState = data.setToolbarPosition;
+				functionState = "TOOLBAR";
+				dataState = data.setToolbarPosition;
 			}
 
 			if (data.searchUrlTemplate) {
-				const functionState = "SEARCH_ENGINE";
-				const dataState = data.searchUrlTemplate;
+				functionState = "SEARCH_ENGINE";
+				dataState = data.searchUrlTemplate;
 			}
 
 			if (data.addTitle) {
-				const functionState = "BOOKMARK";
-				const dataState = data.addUrl;
+				functionState = "BOOKMARK";
+				dataState = data.addUrl;
 			}
 
 			if (data.removeTitle) {
-				const functionState = "REMOVE_BOOKMARK";
-				const dataState = data.removeTitle;
+				functionState = "REMOVE_BOOKMARK";
+				dataState = data.removeTitle;
 			}
 
 			// Εμφάνιση Εικόνων αν υπάρχουν (Από Image Generation)
