@@ -143,6 +143,47 @@ const setSearchEngineTool = {
 	}]
 };
 
+// Ορισμός του εργαλείου για Προσθήκη Σελιδοδείκτη (Bookmark)
+const addBookmarkTool = {
+	functionDeclarations: [{
+		name: "add_bookmark",
+		description: "Adds a website to the bookmarks/favorites when the user requests it (e.g., 'βάλε σελιδοδείκτη το google', 'αποθήκευσε το youtube στα αγαπημένα', 'bookmark this page'). Extracts the site name and the exact URL.",
+		parameters: {
+			type: "OBJECT",
+			properties: {
+				title: {
+					type: "STRING",
+					description: "The clear name or title of the website (e.g., 'Google', 'YouTube', 'GitHub')."
+				},
+				url: {
+					type: "STRING",
+					description: "The full URL of the website to bookmark. Must include http:// or https://."
+				}
+			},
+			required: ["title",
+				"url"]
+		}
+	}]
+};
+
+// Ορισμός του εργαλείου για Αφαίρεση Σελιδοδείκτη (Bookmark)
+const removeBookmarkTool = {
+	functionDeclarations: [{
+		name: "remove_bookmark",
+		description: "Removes or deletes a website from the bookmarks/favorites when the user requests it (e.g., 'σβήσε το google από τους σελιδοδείκτες', 'βγάλε το youtube από τα αγαπημένα', 'delete bookmark github'). Extracts the title or keywords of the site to be removed.",
+		parameters: {
+			type: "OBJECT",
+			properties: {
+				title: {
+					type: "STRING",
+					description: "The name, title, or keyword of the website to remove (e.g., 'Google', 'YouTube', 'GitHub')."
+				}
+			},
+			required: ["title"]
+		}
+	}]
+};
+
 // ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat με Καθολικό Fallback σε PaxSenix αν κρασάρει η Google
 app.post('/api/chat', async (req, res) => {
 	const {
@@ -161,6 +202,8 @@ app.post('/api/chat', async (req, res) => {
 					- If the user wants to change, toggle, or set the theme/mode (e.g., "βάλε dark mode", "γύρνα το σε άσπρο", "switch to light mode"), reply ONLY with "THEME".
 					- If the user wants to move, change, or set the position of the toolbar/navbar/menu to the top or bottom/pants of the page (e.g., "βάλε το toolbar πάνω", "μετακίνησε τη μπάρα κάτω", "θέλω το μενού στο πάτο"), reply ONLY with "TOOLBAR".
 					- If the user wants to change, toggle, or set the default search engine to ANY website (e.g., "βάλε google για αναζήτηση", "άλλαξε τη μηχανή σε duckduckgo", "θέλω αναζήτηση μέσω youtube", "set default search engine to github"), reply ONLY with "SEARCH_ENGINE".
+					- If the user wants to add, save, or keep a website to their bookmarks or favorites (e.g., "βάλε σελιδοδείκτη το YouTube", "κράτα στα αγαπημένα το github", "bookmark wikipedia"), reply ONLY with "BOOKMARK".
+					- If the user wants to remove, delete, or clear a website from their bookmarks or favorites (e.g., "σβήσε το youtube από τους σελιδοδείκτες", "βγάλε το facebook από τα αγαπημένα", "delete bookmark github"), reply ONLY with "REMOVE_BOOKMARK".
 					- Otherwise, for any general question, chat, or web search request, reply ONLY with "TEXT".`
 				}]
 			}]
@@ -398,8 +441,89 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
+		} else if (decision.includes("BOOKMARK")) {
+			// --- ΛΟΓΙΚΗ ΠΡΟΣΘΗΚΗΣ ΣΕΛΙΔΟΔΕΙΚΤΗ ---
+			const response = await ai.models.generateContent({
+				model: CHAT_MODEL,
+				history: history || [],
+				contents: [{
+					role: "user", parts: [{
+						text: prompt
+					}]
+				}],
+				config: {
+					systemInstruction: "You are the OxyZen Browser assistant. Your ONLY job is to return a function call to 'add_bookmark' with the correct title and full URL of the website the user wants to save. If the user doesn't provide a full URL, infer the most logical one (e.g., 'YouTube' -> 'https://www.youtube.com'). Do not write text, do not write code blocks, just call the tool.",
+					tools: [addBookmarkTool],
+					safetySettings: safety,
+				},
+			});
+
+			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
+
+			if (candidatePart && candidatePart.functionCall) {
+				const call = candidatePart.functionCall;
+				if (call.name === "add_bookmark") {
+					const bookmarkTitle = call.args.title;
+					const bookmarkUrl = call.args.url;
+
+					return res.json({
+						text: `<div class="thought">Adding bookmark for ${bookmarkTitle}...</div><p>Η ιστοσελίδα <strong>${bookmarkTitle}</strong> προστέθηκε επιτυχώς στους σελιδοδείκτες σου!</p>`,
+						addBookmark: {
+							title: bookmarkTitle,
+							url: bookmarkUrl
+						},
+						token: response.usageMetadata?.totalTokenCount || 0
+					});
+				}
+			}
+
+			return res.json({
+				text: `<div class="thought">Fallback bookmark handling.</div><p>Δεν μπόρεσα να αποθηκεύσω τον σελιδοδείκτη αυτόματα.</p>`,
+				token: response.usageMetadata?.totalTokenCount || 0
+			});
+
+		} else if (decision.includes("REMOVE_BOOKMARK")) {
+			// --- ΛΟΓΙΚΗ ΑΦΑΙΡΕΣΗΣ ΣΕΛΙΔΟΔΕΙΚΤΗ ---
+			const response = await ai.models.generateContent({
+				model: CHAT_MODEL,
+				history: history || [],
+				contents: [{
+					role: "user", parts: [{
+						text: prompt
+					}]
+				}],
+				config: {
+					systemInstruction: "You are the OxyZen Browser assistant. Your ONLY job is to return a function call to 'remove_bookmark' with the title or core name of the website the user wants to delete from their bookmarks. Do not write text, do not write code blocks, just call the tool.",
+					tools: [removeBookmarkTool],
+					safetySettings: safety,
+				},
+			});
+
+			const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
+
+			if (candidatePart && candidatePart.functionCall) {
+				const call = candidatePart.functionCall;
+				if (call.name === "remove_bookmark") {
+					const bookmarkTitle = call.args.title;
+
+					return res.json({
+						text: `<div class="thought">Removing bookmark for ${bookmarkTitle}...</div><p>Ο σελιδοδείκτης <strong>${bookmarkTitle}</strong> αφαιρέθηκε.</p>`,
+						removeBookmark: {
+							title: bookmarkTitle
+						},
+						token: response.usageMetadata?.totalTokenCount || 0
+					});
+				}
+			}
+
+			return res.json({
+				text: `<div class="thought">Fallback remove bookmark handling.</div><p>Δεν μπόρεσα να αφαιρέσω τον σελιδοδείκτη αυτόματα.</p>`,
+				token: response.usageMetadata?.totalTokenCount || 0
+			});
+
 		} else {
 			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
+
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
