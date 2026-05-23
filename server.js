@@ -54,6 +54,16 @@ CORE RULES:
 - <div class="thought">...your reasoning...</div>
 - FINAL RESPONSE in HTML (p, ul, strong, a).`;
 
+// --- Προσθήκη στην κορυφή του αρχείου, κάτω από τα imports ---
+const GOOGLE_TIMEOUT_MS = 8000; // 8 δευτερόλεπτα όριο για την Google
+
+const withTimeout = (promise, ms = GOOGLE_TIMEOUT_MS) => {
+	return Promise.race([
+		promise,
+		new Promise((_, reject) => setTimeout(() => reject(new Error(`Google API Node Timeout after ${ms}ms`)), ms))
+	]);
+};
+
 // ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat
 app.post('/api/chat', async (req, res) => {
 	const {
@@ -61,9 +71,10 @@ app.post('/api/chat', async (req, res) => {
 	} = req.body;
 
 	try {
-		// 1. Φάση Δρομολόγησης (Intelligent Routing) μέσω GEMINI 2.5 FLASH-LITE
-		// Χρησιμοποιούμε responseSchema για να πάρουμε 100% εγγυημένο JSON
-		const routerResponse = await ai.models.generateContent({
+		console.log("[Router] Starting intelligent routing...");
+
+		// 1. Φάση Δρομολόγησης με επιβολή Timeout
+		const routerPromise = ai.models.generateContent({
 			model: ROUTER_MODEL,
 			contents: `Analyze the user input: "${prompt}". Categorize their intent.`,
 			config: {
@@ -91,13 +102,14 @@ app.post('/api/chat', async (req, res) => {
 			}
 		});
 
+		// Εφαρμογή του timeout στον Router
+		const routerResponse = await withTimeout(routerPromise, GOOGLE_TIMEOUT_MS);
 		const routerJson = JSON.parse(routerResponse.text);
 		const decision = routerJson.decision.trim().toUpperCase();
 		console.log(`[Gemini Flash-Lite Router] Decision: ${decision}`);
 
 		// 2. Εκτέλεση βάσει της απόφασης
 		if (decision === "IMAGE") {
-			// --- ΛΟΓΙΚΗ ΕΙΚΟΝΑΣ ΜΕ ΥΠΟΣΤΗΡΙΞΗ ΙΣΤΟΡΙΚΟΥ (Gemini Cloud) ---
 			console.log("[Image Engine] Context-aware image generation triggered.");
 
 			const contextChat = ai.chats.create({
@@ -107,24 +119,21 @@ app.post('/api/chat', async (req, res) => {
 					systemInstruction: `You are an expert prompt expander for an image generation model.
 					Analyze the conversation history and the user's latest request.
 					Your task is to output a single, highly-detailed image generation prompt in English that captures the user's full intent.
-
-					CRITICAL RULES:
-					- Output ONLY the final English prompt.
-					- Do not include explanations, intro text, markdown formatting, or quotes.`
+					CRITICAL RULES: Output ONLY the final English prompt. No markdown.`
 				}
 			});
 
-			const promptSynthesisResponse = await contextChat.sendMessage({
+			// Timeout στην σύνθεση του prompt
+			const promptSynthesisResponse = await withTimeout(contextChat.sendMessage({
 				message: prompt
-			});
+			}), GOOGLE_TIMEOUT_MS);
 			const synthesizedPrompt = promptSynthesisResponse.text.trim();
 
-			console.log(`[Image Engine] Synthesized Prompt from history: "${synthesizedPrompt}"`);
+			console.log(`[Image Engine] Synthesized Prompt: "${synthesizedPrompt}"`);
 
 			const currentParts = [{
 				text: synthesizedPrompt
 			}];
-
 			if (images && Array.isArray(images)) {
 				images.forEach(imgBase64 => {
 					currentParts.push({
@@ -135,7 +144,8 @@ app.post('/api/chat', async (req, res) => {
 				});
 			}
 
-			const response = await ai.models.generateContent({
+			// Timeout στην δημιουργία εικόνας (δίνουμε λίγο παραπάνω χρόνο εδώ, π.χ. 12s)
+			const imagePromise = ai.models.generateContent({
 				model: IMAGE_MODEL,
 				contents: [{
 					role: "user", parts: currentParts
@@ -148,6 +158,8 @@ app.post('/api/chat', async (req, res) => {
 					}
 				}
 			});
+
+			const response = await withTimeout(imagePromise, 15000);
 
 			const candidate = response.candidates ? response.candidates[0]: null;
 			const parts = candidate?.content?.parts;
@@ -172,179 +184,111 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
-		} else if (decision === "NAVIGATE") {
-			// --- UI TASK: ΠΛΟΗΓΗΣΗ ---
-			const uiResponse = await ai.models.generateContent({
+		} else if (decision === "NAVIGATE" || decision === "THEME" || decision === "TOOLBAR" || decision === "SEARCH_ENGINE" || decision === "BOOKMARK" || decision === "REMOVE_BOOKMARK") {
+
+			// --- UI TASKS GROUP (Συμπυκνωμένο block για εξοικονόμηση χώρου, διατηρώντας τη δομή σου) ---
+			let systemPrompt = "";
+			let responseSchemaObj = {};
+
+			if (decision === "NAVIGATE") {
+				systemPrompt = `Extract the destination URL. Respond ONLY with a valid JSON object. Example: {"url": "https://example.com"}.`;
+				responseSchemaObj = {
+					url: {
+						type: Type.STRING
+					}
+				};
+			} else if (decision === "THEME") {
+				systemPrompt = `Identify the target theme (dark, light, or system). Respond ONLY with JSON. Example: {"theme": "dark"}.`;
+				responseSchemaObj = {
+					theme: {
+						type: Type.STRING
+					}
+				};
+			} else if (decision === "TOOLBAR") {
+				systemPrompt = `Identify the toolbar position (top or bottom). Respond ONLY with JSON. Example: {"position": "top"}.`;
+				responseSchemaObj = {
+					position: {
+						type: Type.STRING
+					}
+				};
+			} else if (decision === "SEARCH_ENGINE") {
+				systemPrompt = `Identify the requested search engine name and create its standard search URL template using '%s' for the query.`;
+				responseSchemaObj = {
+					engine: {
+						type: Type.STRING
+					},
+					searchUrl: {
+						type: Type.STRING
+					}
+				};
+			} else if (decision === "BOOKMARK") {
+				systemPrompt = `Extract the title and full URL for a bookmark. Respond ONLY with JSON.`;
+				responseSchemaObj = {
+					title: {
+						type: Type.STRING
+					},
+					url: {
+						type: Type.STRING
+					}
+				};
+			} else if (decision === "REMOVE_BOOKMARK") {
+				systemPrompt = `Extract the title or keyword of the bookmark to remove. Respond ONLY with JSON.`;
+				responseSchemaObj = {
+					title: {
+						type: Type.STRING
+					}
+				};
+			}
+
+			const uiPromise = ai.models.generateContent({
 				model: ROUTER_MODEL,
-				contents: `Extract URL from: "${prompt}"`,
+				contents: `Process request: "${prompt}"`,
 				config: {
-					systemInstruction: `Extract the destination URL. Respond ONLY with a valid JSON object. Example: {"url": "https://example.com"}. If no URL is explicitly provided, infer the most logical one. Include http:// or https://.`,
+					systemInstruction: systemPrompt,
 					responseMimeType: "application/json",
 					responseSchema: {
 						type: Type.OBJECT,
-						properties: {
-							url: {
-								type: Type.STRING
-							}
-						},
-						required: ["url"]
+						properties: responseSchemaObj,
+						required: Object.keys(responseSchemaObj)
 					}
 				}
 			});
 
+			const uiResponse = await withTimeout(uiPromise, GOOGLE_TIMEOUT_MS);
 			const parsed = JSON.parse(uiResponse.text);
-			return res.json({
-				text: `<div class="thought">Zen Auto-Routing...</div><p>Μετάβαση στον σύνδεσμο: <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`,
-				openUrl: parsed.url,
-				token: uiResponse.usageMetadata?.totalTokenCount || 0
-			});
 
-		} else if (decision === "THEME") {
-			// --- UI TASK: ΑΛΛΑΓΗ ΘΕΜΑΤΟΣ ---
-			const uiResponse = await ai.models.generateContent({
-				model: ROUTER_MODEL,
-				contents: `Identify theme from: "${prompt}"`,
-				config: {
-					systemInstruction: `Identify the target theme (dark, light, or system). Respond ONLY with JSON. Example: {"theme": "dark"}.`,
-					responseMimeType: "application/json",
-					responseSchema: {
-						type: Type.OBJECT,
-						properties: {
-							theme: {
-								type: Type.STRING
-							}
-						},
-						required: ["theme"]
-					}
-				}
-			});
-
-			const parsed = JSON.parse(uiResponse.text);
-			return res.json({
-				text: `<div class="thought">Zen UI Control...</div><p>Αλλαγή εμφάνισης σε <strong>${parsed.theme} mode</strong>.</p>`,
-				setTheme: parsed.theme,
-				token: uiResponse.usageMetadata?.totalTokenCount || 0
-			});
-
-		} else if (decision === "TOOLBAR") {
-			// --- UI TASK: ΘΕΣΗ TOOLBAR ---
-			const uiResponse = await ai.models.generateContent({
-				model: ROUTER_MODEL,
-				contents: `Identify toolbar position from: "${prompt}"`,
-				config: {
-					systemInstruction: `Identify the toolbar position (top or bottom). Respond ONLY with JSON. Example: {"position": "top"}.`,
-					responseMimeType: "application/json",
-					responseSchema: {
-						type: Type.OBJECT,
-						properties: {
-							position: {
-								type: Type.STRING
-							}
-						},
-						required: ["position"]
-					}
-				}
-			});
-
-			const parsed = JSON.parse(uiResponse.text);
-			const greekPosition = parsed.position === "top" ? "κορυφή": "πάτο";
-			return res.json({
-				text: `<div class="thought">Zen UI Control...</div><p>Μετακίνηση του toolbar στην <strong>${greekPosition}</strong> της σελίδας.</p>`,
-				setToolbarPosition: parsed.position,
-				token: uiResponse.usageMetadata?.totalTokenCount || 0
-			});
-
-		} else if (decision === "SEARCH_ENGINE") {
-			// --- UI TASK: ΜΗΧΑΝΗ ΑΝΑΖΗΤΗΣΗΣ ---
-			const uiResponse = await ai.models.generateContent({
-				model: ROUTER_MODEL,
-				contents: `Extract engine template from: "${prompt}"`,
-				config: {
-					systemInstruction: `Identify the requested search engine name and create its standard search URL template using '%s' for the query. Respond ONLY with JSON. Example: {"engine": "youtube", "searchUrl": "https://www.youtube.com/results?search_query=%s"}.`,
-					responseMimeType: "application/json",
-					responseSchema: {
-						type: Type.OBJECT,
-						properties: {
-							engine: {
-								type: Type.STRING
-							},
-							searchUrl: {
-								type: Type.STRING
-							}
-						},
-						required: ["engine", "searchUrl"]
-					}
-				}
-			});
-
-			const parsed = JSON.parse(uiResponse.text);
-			return res.json({
-				text: `<div class="thought">Zen Engine Configuration...</div><p>Η προεπιλεγμένη αναζήτηση ορίστηκε μέσω <strong>${parsed.engine}</strong>.</p>`,
-				setSearchEngine: parsed.engine,
-				searchUrlTemplate: parsed.searchUrl,
-				token: uiResponse.usageMetadata?.totalTokenCount || 0
-			});
-
-		} else if (decision === "BOOKMARK") {
-			// --- UI TASK: ΠΡΟΣΘΗΚΗ ΣΕΛΙΔΟΔΕΙΚΤΗ ---
-			const uiResponse = await ai.models.generateContent({
-				model: ROUTER_MODEL,
-				contents: `Extract bookmark info from: "${prompt}"`,
-				config: {
-					systemInstruction: `Extract the title and full URL for a bookmark. Respond ONLY with JSON. Example: {"title": "Google", "url": "https://google.com"}. If URL is incomplete, infer it logically.`,
-					responseMimeType: "application/json",
-					responseSchema: {
-						type: Type.OBJECT,
-						properties: {
-							title: {
-								type: Type.STRING
-							},
-							url: {
-								type: Type.STRING
-							}
-						},
-						required: ["title", "url"]
-					}
-				}
-			});
-
-			const parsed = JSON.parse(uiResponse.text);
-			return res.json({
-				text: `<div class="thought">Zen Bookmarks...</div><p>Η ιστοσελίδα <strong>${parsed.title}</strong> προστέθηκε επιτυχώς στους σελιδοδείκτες σου!</p>`,
-				addTitle: parsed.title,
-				addUrl: parsed.url,
-				token: uiResponse.usageMetadata?.totalTokenCount || 0
-			});
-
-		} else if (decision === "REMOVE_BOOKMARK") {
-			// --- UI TASK: ΑΦΑΙΡΕΣΗ ΣΕΛΙΔΟΔΕΙΚΤΗ ---
-			const uiResponse = await ai.models.generateContent({
-				model: ROUTER_MODEL,
-				contents: `Extract bookmark to remove from: "${prompt}"`,
-				config: {
-					systemInstruction: `Extract the title or keyword of the bookmark to remove. Respond ONLY with JSON. Example: {"title": "Google"}.`,
-					responseMimeType: "application/json",
-					responseSchema: {
-						type: Type.OBJECT,
-						properties: {
-							title: {
-								type: Type.STRING
-							}
-						},
-						required: ["title"]
-					}
-				}
-			});
-
-			const parsed = JSON.parse(uiResponse.text);
-			return res.json({
-				text: `<div class="thought">Zen Bookmarks...</div><p>Ο σελιδοδείκτης <strong>${parsed.title}</strong> αφαιρέθηκε.</p>`,
-				removeTitle: parsed.title,
-				token: uiResponse.usageMetadata?.totalTokenCount || 0
-			});
+			// Επιστροφή των κατάλληλων δεδομένων ανάλογα με την απόφαση
+			if (decision === "NAVIGATE") {
+				return res.json({
+					text: `<div class="thought">Zen Auto-Routing...</div><p>Μετάβαση στον σύνδεσμο: <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`, openUrl: parsed.url, token: uiResponse.usageMetadata?.totalTokenCount || 0
+				});
+			} else if (decision === "THEME") {
+				return res.json({
+					text: `<div class="thought">Zen UI Control...</div><p>Αλλαγή εμφάνισης σε <strong>${parsed.theme} mode</strong>.</p>`, setTheme: parsed.theme, token: uiResponse.usageMetadata?.totalTokenCount || 0
+				});
+			} else if (decision === "TOOLBAR") {
+				const greekPosition = parsed.position === "top" ? "κορυφή": "πάτο";
+				return res.json({
+					text: `<div class="thought">Zen UI Control...</div><p>Μετακίνηση του toolbar στην <strong>${greekPosition}</strong> της σελίδας.</p>`, setToolbarPosition: parsed.position, token: uiResponse.usageMetadata?.totalTokenCount || 0
+				});
+			} else if (decision === "SEARCH_ENGINE") {
+				return res.json({
+					text: `<div class="thought">Zen Engine Configuration...</div><p>Η προεπιλεγμένη αναζήτηση ορίστηκε μέσω <strong>${parsed.engine}</strong>.</p>`, setSearchEngine: parsed.engine, searchUrlTemplate: parsed.searchUrl, token: uiResponse.usageMetadata?.totalTokenCount || 0
+				});
+			} else if (decision === "BOOKMARK") {
+				return res.json({
+					text: `<div class="thought">Zen Bookmarks...</div><p>Η ιστοσελίδα <strong>${parsed.title}</strong> προστέθηκε επιτυχώς στους σελιδοδείκτες σου!</p>`, addTitle: parsed.title, addUrl: parsed.url, token: uiResponse.usageMetadata?.totalTokenCount || 0
+				});
+			} else if (decision === "REMOVE_BOOKMARK") {
+				return res.json({
+					text: `<div class="thought">Zen Bookmarks...</div><p>Ο σελιδοδείκτης <strong>${parsed.title}</strong> αφαιρέθηκε.</p>`, removeTitle: parsed.title, token: uiResponse.usageMetadata?.totalTokenCount || 0
+				});
+			}
 
 		} else {
-			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH (Gemini Cloud - Flash) ---
+			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
+			console.log("[Chat Engine] Standard chat or web search triggered.");
+
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
@@ -357,9 +301,9 @@ app.post('/api/chat', async (req, res) => {
 				},
 			});
 
-			let response;
+			let chatPromise;
 			if (!images || !Array.isArray(images)) {
-				response = await chat.sendMessage({
+				chatPromise = chat.sendMessage({
 					message: prompt
 				});
 			} else {
@@ -368,10 +312,13 @@ app.post('/api/chat', async (req, res) => {
 						data: imgBase64, mimeType: mimeType || "image/jpeg"
 					}
 				}));
-				response = await chat.sendMessage({
+				chatPromise = chat.sendMessage({
 					message: [...imageParts, prompt]
 				});
 			}
+
+			// Επιβολή Timeout και στο Chat
+			const response = await withTimeout(chatPromise, GOOGLE_TIMEOUT_MS);
 
 			return res.json({
 				text: response.text,
@@ -380,11 +327,12 @@ app.post('/api/chat', async (req, res) => {
 		}
 
 	} catch (globalError) {
-		console.warn("🚨 Σφάλμα διεργασίας Gemini. Ενεργοποίηση Καθολικού PaxSenix Fallback:", globalError.message);
+		// Εδώ "πιάνεται" πλέον ΚΑΙ το timeout της Google!
+		console.warn("🚨 Ενεργοποίηση Καθολικού PaxSenix Fallback λόγω:", globalError.message);
 
 		try {
 			const paxResponse = await paxsenix.createChatCompletion({
-				model: 'gpt-3.5-turbo',
+				model: 'gpt-4o-mini', // Πολύ ανώτερο και γρήγορο για fallback
 				messages: [{
 					role: 'system', content: SYSTEM_INSTRUCTION
 				},
@@ -407,6 +355,7 @@ app.post('/api/chat', async (req, res) => {
 		}
 	}
 });
+
 
 // Endpoint PaxSenix
 app.post('/api/paxsenix-chat', async (req, res) => {
