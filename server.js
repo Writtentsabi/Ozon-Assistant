@@ -1,19 +1,20 @@
-// server.js (Πλήρως Ενοποιημένη Έκδοση με Local Gemma Router & UI Tasks + Cloud Gemini Fallbacks)
+// server.js (Πλήρως Ενοποιημένη Έκδοση με Gemini 2.5 Flash-Lite Router - Έτοιμο για Render)
 import 'dotenv/config';
 import express from 'express';
 import {
-	GoogleGenAI
+	GoogleGenAI,
+	Type
 } from "@google/genai";
 import {
 	Buffer
 } from 'buffer';
 import PaxSenixAI from '@paxsenix/ai';
-import ollama from 'ollama'; // Ενσωμάτωση Ollama για το τοπικό Gemma
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
+const ROUTER_MODEL = "gemini-2.5-flash-lite"; // Χρήση Flash-Lite για το Routing
 
 const ai = new GoogleGenAI( {
 	apiKey: process.env.GEMINI_API_KEY
@@ -60,29 +61,39 @@ app.post('/api/chat', async (req, res) => {
 	} = req.body;
 
 	try {
-		// 1. Φάση Δρομολόγησης (Intelligent Routing) μέσω LOCAL GEMMA
-		// deterministic επιλογή (temperature 0.0) για μέγιστη σταθερότητα
-		const routerResponse = await ollama.generate({
-			model: 'gemma2:2b',
-			prompt: `Analyze the user input: "${prompt}".
-			Respond with ONLY ONE of the following uppercase words based on the intent:
-			- "IMAGE" if they want to generate, draw, or create an image/visual.
-			- "NAVIGATE" if they want to open, launch, go to, or visit a specific website or URL.
-			- "THEME" if they want to change, toggle, or set the theme or mode (dark/light/system).
-			- "TOOLBAR" if they want to move or change the position of the toolbar/navbar to the top or bottom.
-			- "SEARCH_ENGINE" if they want to change or set the default search engine to any website.
-			- "BOOKMARK" if they want to add or save a website to their bookmarks or favorites.
-			- "REMOVE_BOOKMARK" if they want to remove, delete, or clear a website from their bookmarks.
-			- "TEXT" for any general question, conversation, chat, or web search request.
-
-			Do not include punctuation, explanations, or markdown. Output exactly one word.`,
-			options: {
+		// 1. Φάση Δρομολόγησης (Intelligent Routing) μέσω GEMINI 2.5 FLASH-LITE
+		// Χρησιμοποιούμε responseSchema για να πάρουμε 100% εγγυημένο JSON
+		const routerResponse = await ai.models.generateContent({
+			model: ROUTER_MODEL,
+			contents: `Analyze the user input: "${prompt}". Categorize their intent.`,
+			config: {
+				systemInstruction: `You are a routing assistant for a web browser. Categorize the user's intent into exactly one of these uppercase options:
+				- IMAGE (generate, draw, or create an image/visual)
+				- NAVIGATE (open, launch, go to, or visit a specific website)
+				- THEME (change or set the theme to dark, light, or system)
+				- TOOLBAR (move or change toolbar position to top or bottom)
+				- SEARCH_ENGINE (change or set the default search engine)
+				- BOOKMARK (add or save a website to bookmarks)
+				- REMOVE_BOOKMARK (remove or delete a website from bookmarks)
+				- TEXT (general question, chat, or web search request)`,
+				responseMimeType: "application/json",
+				responseSchema: {
+					type: Type.OBJECT,
+					properties: {
+						decision: {
+							type: Type.STRING,
+							description: "The uppercase classification word."
+						}
+					},
+					required: ["decision"]
+				},
 				temperature: 0.0
 			}
 		});
 
-		const decision = routerResponse.response.trim().toUpperCase();
-		console.log(`[Local Gemma Router] Decision: ${decision}`);
+		const routerJson = JSON.parse(routerResponse.text);
+		const decision = routerJson.decision.trim().toUpperCase();
+		console.log(`[Gemini Flash-Lite Router] Decision: ${decision}`);
 
 		// 2. Εκτέλεση βάσει της απόφασης
 		if (decision === "IMAGE") {
@@ -95,7 +106,7 @@ app.post('/api/chat', async (req, res) => {
 				config: {
 					systemInstruction: `You are an expert prompt expander for an image generation model.
 					Analyze the conversation history and the user's latest request.
-					Your task is to output a single, highly-detailed image generation prompt in English that captures the user's full intent, combining past context with the new request.
+					Your task is to output a single, highly-detailed image generation prompt in English that captures the user's full intent.
 
 					CRITICAL RULES:
 					- Output ONLY the final English prompt.
@@ -162,139 +173,178 @@ app.post('/api/chat', async (req, res) => {
 			});
 
 		} else if (decision === "NAVIGATE") {
-			// --- UI TASK: ΠΛΟΗΓΗΣΗ (Local Gemma JSON Extraction) ---
-			const gemmaPrompt = `Extract the website URL the user wants to open from this request: "${prompt}".
-			Respond ONLY with a valid JSON object like this: {"url": "https://example.com"}.
-			If no specific URL is provided, infer the most logical one. Include http:// or https://.`;
-
-			const gemmaRes = await ollama.generate({
-				model: 'gemma2:2b',
-				prompt: gemmaPrompt,
-				format: 'json',
-				options: {
-					temperature: 0.1
+			// --- UI TASK: ΠΛΟΗΓΗΣΗ ---
+			const uiResponse = await ai.models.generateContent({
+				model: ROUTER_MODEL,
+				contents: `Extract URL from: "${prompt}"`,
+				config: {
+					systemInstruction: `Extract the destination URL. Respond ONLY with a valid JSON object. Example: {"url": "https://example.com"}. If no URL is explicitly provided, infer the most logical one. Include http:// or https://.`,
+					responseMimeType: "application/json",
+					responseSchema: {
+						type: Type.OBJECT,
+						properties: {
+							url: {
+								type: Type.STRING
+							}
+						},
+						required: ["url"]
+					}
 				}
 			});
 
-			const parsed = JSON.parse(gemmaRes.response);
+			const parsed = JSON.parse(uiResponse.text);
 			return res.json({
-				text: `<div class="thought">Gemma Local Routing...</div><p>Opening link: <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`,
+				text: `<div class="thought">Zen Auto-Routing...</div><p>Μετάβαση στον σύνδεσμο: <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`,
 				openUrl: parsed.url,
-				token: 0
+				token: uiResponse.usageMetadata?.totalTokenCount || 0
 			});
 
 		} else if (decision === "THEME") {
-			// --- UI TASK: ΑΛΛΑΓΗ ΘΕΜΑΤΟΣ (Local Gemma JSON Extraction) ---
-			const gemmaPrompt = `Identify the target theme (dark, light, or system) from this request: "${prompt}".
-			Respond ONLY with a valid JSON object like this: {"theme": "dark"}.`;
-
-			const gemmaRes = await ollama.generate({
-				model: 'gemma2:2b',
-				prompt: gemmaPrompt,
-				format: 'json',
-				options: {
-					temperature: 0.0
+			// --- UI TASK: ΑΛΛΑΓΗ ΘΕΜΑΤΟΣ ---
+			const uiResponse = await ai.models.generateContent({
+				model: ROUTER_MODEL,
+				contents: `Identify theme from: "${prompt}"`,
+				config: {
+					systemInstruction: `Identify the target theme (dark, light, or system). Respond ONLY with JSON. Example: {"theme": "dark"}.`,
+					responseMimeType: "application/json",
+					responseSchema: {
+						type: Type.OBJECT,
+						properties: {
+							theme: {
+								type: Type.STRING
+							}
+						},
+						required: ["theme"]
+					}
 				}
 			});
 
-			const parsed = JSON.parse(gemmaRes.response);
+			const parsed = JSON.parse(uiResponse.text);
 			return res.json({
-				text: `<div class="thought">Gemma Local UI control...</div><p>Changing appearance to <strong>${parsed.theme} mode</strong>.</p>`,
+				text: `<div class="thought">Zen UI Control...</div><p>Αλλαγή εμφάνισης σε <strong>${parsed.theme} mode</strong>.</p>`,
 				setTheme: parsed.theme,
-				token: 0
+				token: uiResponse.usageMetadata?.totalTokenCount || 0
 			});
 
 		} else if (decision === "TOOLBAR") {
-			// --- UI TASK: ΘΕΣΗ TOOLBAR (Local Gemma JSON Extraction) ---
-			const gemmaPrompt = `Identify the target toolbar position (top or bottom) from this request: "${prompt}".
-			Respond ONLY with a valid JSON object like this: {"position": "top"}.`;
-
-			const gemmaRes = await ollama.generate({
-				model: 'gemma2:2b',
-				prompt: gemmaPrompt,
-				format: 'json',
-				options: {
-					temperature: 0.0
+			// --- UI TASK: ΘΕΣΗ TOOLBAR ---
+			const uiResponse = await ai.models.generateContent({
+				model: ROUTER_MODEL,
+				contents: `Identify toolbar position from: "${prompt}"`,
+				config: {
+					systemInstruction: `Identify the toolbar position (top or bottom). Respond ONLY with JSON. Example: {"position": "top"}.`,
+					responseMimeType: "application/json",
+					responseSchema: {
+						type: Type.OBJECT,
+						properties: {
+							position: {
+								type: Type.STRING
+							}
+						},
+						required: ["position"]
+					}
 				}
 			});
 
-			const parsed = JSON.parse(gemmaRes.response);
+			const parsed = JSON.parse(uiResponse.text);
 			const greekPosition = parsed.position === "top" ? "κορυφή": "πάτο";
 			return res.json({
-				text: `<div class="thought">Gemma Local UI control...</div><p>Μετακίνηση του toolbar στην <strong>${greekPosition}</strong> της σελίδας.</p>`,
+				text: `<div class="thought">Zen UI Control...</div><p>Μετακίνηση του toolbar στην <strong>${greekPosition}</strong> της σελίδας.</p>`,
 				setToolbarPosition: parsed.position,
-				token: 0
+				token: uiResponse.usageMetadata?.totalTokenCount || 0
 			});
 
 		} else if (decision === "SEARCH_ENGINE") {
-			// --- UI TASK: ΜΗΧΑΝΗ ΑΝΑΖΗΤΗΣΗΣ (Local Gemma JSON Extraction) ---
-			const gemmaPrompt = `The user wants to change their search engine: "${prompt}".
-			Identify the engine name and create its standard search URL template using '%s' for the query placeholder.
-			Respond ONLY with a valid JSON object like this: {"engine": "youtube", "searchUrl": "https://www.youtube.com/results?search_query=%s"}.`;
-
-			const gemmaRes = await ollama.generate({
-				model: 'gemma2:2b',
-				prompt: gemmaPrompt,
-				format: 'json',
-				options: {
-					temperature: 0.1
+			// --- UI TASK: ΜΗΧΑΝΗ ΑΝΑΖΗΤΗΣΗΣ ---
+			const uiResponse = await ai.models.generateContent({
+				model: ROUTER_MODEL,
+				contents: `Extract engine template from: "${prompt}"`,
+				config: {
+					systemInstruction: `Identify the requested search engine name and create its standard search URL template using '%s' for the query. Respond ONLY with JSON. Example: {"engine": "youtube", "searchUrl": "https://www.youtube.com/results?search_query=%s"}.`,
+					responseMimeType: "application/json",
+					responseSchema: {
+						type: Type.OBJECT,
+						properties: {
+							engine: {
+								type: Type.STRING
+							},
+							searchUrl: {
+								type: Type.STRING
+							}
+						},
+						required: ["engine", "searchUrl"]
+					}
 				}
 			});
 
-			const parsed = JSON.parse(gemmaRes.response);
+			const parsed = JSON.parse(uiResponse.text);
 			return res.json({
-				text: `<div class="thought">Gemma Local Configuration...</div><p>Η προεπιλεγμένη αναζήτηση ορίστηκε μέσω <strong>${parsed.engine}</strong>.</p>`,
+				text: `<div class="thought">Zen Engine Configuration...</div><p>Η προεπιλεγμένη αναζήτηση ορίστηκε μέσω <strong>${parsed.engine}</strong>.</p>`,
 				setSearchEngine: parsed.engine,
 				searchUrlTemplate: parsed.searchUrl,
-				token: 0
+				token: uiResponse.usageMetadata?.totalTokenCount || 0
 			});
 
 		} else if (decision === "BOOKMARK") {
-			// --- UI TASK: ΠΡΟΣΘΗΚΗ ΣΕΛΙΔΟΔΕΙΚΤΗ (Local Gemma JSON Extraction) ---
-			const gemmaPrompt = `Extract the title and full URL for a bookmark from this request: "${prompt}".
-			If the user doesn't provide a full URL, infer the most logical one.
-			Respond ONLY with a valid JSON object like this: {"title": "Google", "url": "https://google.com"}.`;
-
-			const gemmaRes = await ollama.generate({
-				model: 'gemma2:2b',
-				prompt: gemmaPrompt,
-				format: 'json',
-				options: {
-					temperature: 0.1
+			// --- UI TASK: ΠΡΟΣΘΗΚΗ ΣΕΛΙΔΟΔΕΙΚΤΗ ---
+			const uiResponse = await ai.models.generateContent({
+				model: ROUTER_MODEL,
+				contents: `Extract bookmark info from: "${prompt}"`,
+				config: {
+					systemInstruction: `Extract the title and full URL for a bookmark. Respond ONLY with JSON. Example: {"title": "Google", "url": "https://google.com"}. If URL is incomplete, infer it logically.`,
+					responseMimeType: "application/json",
+					responseSchema: {
+						type: Type.OBJECT,
+						properties: {
+							title: {
+								type: Type.STRING
+							},
+							url: {
+								type: Type.STRING
+							}
+						},
+						required: ["title", "url"]
+					}
 				}
 			});
 
-			const parsed = JSON.parse(gemmaRes.response);
+			const parsed = JSON.parse(uiResponse.text);
 			return res.json({
-				text: `<div class="thought">Gemma Local Bookmarks...</div><p>Η ιστοσελίδα <strong>${parsed.title}</strong> προστέθηκε επιτυχώς στους σελιδοδείκτες σου!</p>`,
+				text: `<div class="thought">Zen Bookmarks...</div><p>Η ιστοσελίδα <strong>${parsed.title}</strong> προστέθηκε επιτυχώς στους σελιδοδείκτες σου!</p>`,
 				addTitle: parsed.title,
 				addUrl: parsed.url,
-				token: 0
+				token: uiResponse.usageMetadata?.totalTokenCount || 0
 			});
 
 		} else if (decision === "REMOVE_BOOKMARK") {
-			// --- UI TASK: ΑΦΑΙΡΕΣΗ ΣΕΛΙΔΟΔΕΙΚΤΗ (Local Gemma JSON Extraction) ---
-			const gemmaPrompt = `Extract the title or core keyword of the bookmark to remove from this request: "${prompt}".
-			Respond ONLY with a valid JSON object like this: {"title": "Google"}.`;
-
-			const gemmaRes = await ollama.generate({
-				model: 'gemma2:2b',
-				prompt: gemmaPrompt,
-				format: 'json',
-				options: {
-					temperature: 0.0
+			// --- UI TASK: ΑΦΑΙΡΕΣΗ ΣΕΛΙΔΟΔΕΙΚΤΗ ---
+			const uiResponse = await ai.models.generateContent({
+				model: ROUTER_MODEL,
+				contents: `Extract bookmark to remove from: "${prompt}"`,
+				config: {
+					systemInstruction: `Extract the title or keyword of the bookmark to remove. Respond ONLY with JSON. Example: {"title": "Google"}.`,
+					responseMimeType: "application/json",
+					responseSchema: {
+						type: Type.OBJECT,
+						properties: {
+							title: {
+								type: Type.STRING
+							}
+						},
+						required: ["title"]
+					}
 				}
 			});
 
-			const parsed = JSON.parse(gemmaRes.response);
+			const parsed = JSON.parse(uiResponse.text);
 			return res.json({
-				text: `<div class="thought">Gemma Local Bookmarks...</div><p>Ο σελιδοδείκτης <strong>${parsed.title}</strong> αφαιρέθηκε.</p>`,
+				text: `<div class="thought">Zen Bookmarks...</div><p>Ο σελιδοδείκτης <strong>${parsed.title}</strong> αφαιρέθηκε.</p>`,
 				removeTitle: parsed.title,
-				token: 0
+				token: uiResponse.usageMetadata?.totalTokenCount || 0
 			});
 
 		} else {
-			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH (Gemini Cloud) ---
+			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH (Gemini Cloud - Flash) ---
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
@@ -330,7 +380,7 @@ app.post('/api/chat', async (req, res) => {
 		}
 
 	} catch (globalError) {
-		console.warn("🚨 Σφάλμα διεργασίας. Ενεργοποίηση Καθολικού PaxSenix Fallback:", globalError.message);
+		console.warn("🚨 Σφάλμα διεργασίας Gemini. Ενεργοποίηση Καθολικού PaxSenix Fallback:", globalError.message);
 
 		try {
 			const paxResponse = await paxsenix.createChatCompletion({
@@ -350,7 +400,7 @@ app.post('/api/chat', async (req, res) => {
 			});
 
 		} catch (paxError) {
-			console.error("Fatal Error (Both Models failed):", paxError);
+			console.error("Fatal Error (Both Gemini and PaxSenix failed):", paxError);
 			return res.status(500).json({
 				error: "Όλες οι υπηρεσίες τεχνητής νοημοσύνης είναι προσωρινά μη διαθέσιμες."
 			});
