@@ -1,4 +1,4 @@
-// server.js (Πλήρως Ενοποιημένη Έκδοση με Gemini 2.5 Flash-Lite Router - Διορθωμένο Ιστορικό)
+// server.js (Πλήρως Ενοποιημένη Έκδοση με Local Gemma Router & UI Tasks + Cloud Gemini Fallbacks)
 import 'dotenv/config';
 import express from 'express';
 import {
@@ -8,12 +8,12 @@ import {
 	Buffer
 } from 'buffer';
 import PaxSenixAI from '@paxsenix/ai';
+import ollama from 'ollama'; // Ενσωμάτωση Ollama για το τοπικό Gemma
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
-const ROUTER_MODEL = "gemini-2.5-flash-lite";
 
 const ai = new GoogleGenAI( {
 	apiKey: process.env.GEMINI_API_KEY
@@ -51,138 +51,7 @@ const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for
 CORE RULES:
 1. Every response MUST consist of two distinct sections:
 - <div class="thought">...your reasoning...</div>
-- FINAL RESPONSE in HTML (p, ul, strong, a).`
-
-const IMAGE_SYSTEM_INSTRUCTION = `You are the image generation engine for OxyZen Browser.
-
-CRITICAL RULES:
-1. LANGUAGE: If the user's prompt is not in English, translate the core visual description into English before processing.
-2. TRIGGER: Generate an image ONLY if the user explicitly asks for one (e.g., "φτιάξε μια εικόνα", "generate an image", "σχεδίασε", "create a photo", "draw").
-3. REFUSAL: If the user is just chatting or asking a question without a request to create a visual, DO NOT generate an image. Instead, provide a brief text response in the user's language explaining that you are ready to create an image when they provide a description.
-4. TRANSLATION: Your internal processing for the image generation tool must always be in English to ensure quality.`;
-
-// Ορισμός του εργαλείου για το άνοιγμα συνδέσμων
-const openUrlTool = {
-	functionDeclarations: [{
-		name: "open_url",
-		description: "Opens a specific website or URL when the user explicitly requests to navigate or open a site (e.g., 'Go to YouTube', 'Άνοιξε το Google').",
-		parameters: {
-			type: "OBJECT",
-			properties: {
-				url: {
-					type: "STRING",
-					description: "The full destination URL to open (e.g., 'https://www.youtube.com', 'https://www.google.com'). Must include http:// or https://."
-				}
-			},
-			required: ["url"]
-		}
-	}]
-};
-
-// Ορισμός του εργαλείου για την αλλαγή του Theme (Dark/Light/System)
-const setThemeTool = {
-	functionDeclarations: [{
-		name: "set_theme",
-		description: "Changes the application theme to dark, light, or system default mode when the user requests it (e.g., 'βάλε dark mode', 'γύρνα το σε light', 'θέλω σκοτεινό θέμα').",
-		parameters: {
-			type: "OBJECT",
-			properties: {
-				theme: {
-					type: "STRING",
-					enum: ["dark",
-						"light",
-						"system"],
-					description: "The target theme mode requested by the user."
-				}
-			},
-			required: ["theme"]
-		}
-	}]
-};
-
-// Ορισμός του εργαλείου για την αλλαγή θέσης του Toolbar (Top/Bottom)
-const setToolbarPositionTool = {
-	functionDeclarations: [{
-		name: "set_toolbar_position",
-		description: "Changes the location/position of the toolbar/navbar to either the top or the bottom of the page based on the user's request (e.g., 'βάλτο πάνω', 'θέλω το toolbar κάτω', 'move navigation to the top').",
-		parameters: {
-			type: "OBJECT",
-			properties: {
-				position: {
-					type: "STRING",
-					enum: ["top",
-						"bottom"],
-					description: "The target position for the toolbar."
-				}
-			},
-			required: ["position"]
-		}
-	}]
-};
-
-// Ορισμός του εργαλείου για Δυναμική Αλλαγή Μηχανής Αναζήτησης
-const setSearchEngineTool = {
-	functionDeclarations: [{
-		name: "set_search_engine",
-		description: "Changes the default search engine of the browser to any website requested by the user (e.g., 'βάλε youtube', 'άλλαξε τη μηχανή σε wikipedia', 'θέλω αναζήτηση μέσω github'). Identifies the site and returns its search URL template with %s.",
-		parameters: {
-			type: "OBJECT",
-			properties: {
-				engine: {
-					type: "STRING",
-					description: "The name of the website/search engine requested by the user (e.g., 'youtube', 'wikipedia', 'github')."
-				},
-				searchUrl: {
-					type: "STRING",
-					description: "The full search URL template for that specific website, where the query placeholder is replaced by %s."
-				}
-			},
-			required: ["engine",
-				"searchUrl"]
-		}
-	}]
-};
-
-// Ορισμός του εργαλείου για Προσθήκη Σελιδοδείκτη (Bookmark)
-const addBookmarkTool = {
-	functionDeclarations: [{
-		name: "add_bookmark",
-		description: "Adds a website to the bookmarks/favorites when the user requests it (e.g., 'βάλε σελιδοδείκτη το google', 'αποθήκευσε το youtube στα αγαπημένα', 'bookmark this page'). Extracts the site name and the exact URL.",
-		parameters: {
-			type: "OBJECT",
-			properties: {
-				title: {
-					type: "STRING",
-					description: "The clear name or title of the website (e.g., 'Google', 'YouTube', 'GitHub')."
-				},
-				url: {
-					type: "STRING",
-					description: "The full URL of the website to bookmark. Must include http:// or https://."
-				}
-			},
-			required: ["title",
-				"url"]
-		}
-	}]
-};
-
-// Ορισμός του εργαλείου για Αφαίρεση Σελιδοδείκτη (Bookmark)
-const removeBookmarkTool = {
-	functionDeclarations: [{
-		name: "remove_bookmark",
-		description: "Removes or deletes a website from the bookmarks/favorites when the user requests it (e.g., 'σβήσε το google από τους σελιδοδείκτες', 'βγάλε το youtube από τα αγαπημένα', 'delete bookmark github'). Extracts the title or keywords of the site to be removed.",
-		parameters: {
-			type: "OBJECT",
-			properties: {
-				title: {
-					type: "STRING",
-					description: "The name, title, or keyword of the website to remove (e.g., 'Google', 'YouTube', 'GitHub')."
-				}
-			},
-			required: ["title"]
-		}
-	}]
-};
+- FINAL RESPONSE in HTML (p, ul, strong, a).`;
 
 // ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat
 app.post('/api/chat', async (req, res) => {
@@ -191,32 +60,35 @@ app.post('/api/chat', async (req, res) => {
 	} = req.body;
 
 	try {
-		// 1. Φάση Δρομολόγησης (Intelligent Routing)
-		const routerResult = await ai.models.generateContent({
-			model: ROUTER_MODEL,
-			contents: [{
-				parts: [{
-					text: `Analyze the user input: "${prompt}".
-					- If the user wants to generate, draw, or create an image/visual, reply ONLY with "IMAGE".
-					- If the user explicitly wants to open, launch, go to, or visit a specific website/URL (e.g., "Άνοιξε το YouTube", "open github"), reply ONLY with "NAVIGATE".
-					- If the user wants to change, toggle, or set the theme/mode (e.g., "βάλε dark mode", "γύρνα το σε άσπρο", "switch to light mode"), reply ONLY with "THEME".
-					- If the user wants to move, change, or set the position of the toolbar/navbar/menu to the top or bottom/pants of the page (e.g., "βάλε το toolbar πάνω", "μετακίνησε τη μπάρα κάτω", "θέλω το μενού στο πάτο"), reply ONLY with "TOOLBAR".
-					- If the user wants to change, toggle, or set the default search engine to ANY website (e.g., "βάλε google για αναζήτηση", "άλλαξε τη μηχανή σε duckduckgo", "θέλω αναζήτηση μέσω youtube", "set default search engine to github"), reply ONLY with "SEARCH_ENGINE".
-					- If the user wants to add, save, or keep a website to their bookmarks or favorites (e.g., "βάλε σελιδοδείκτη το YouTube", "κράτα στα αγαπημένα το github", "bookmark wikipedia"), reply ONLY with "BOOKMARK".
-					- If the user wants to remove, delete, or clear a website from their bookmarks or favorites (e.g., "σβήσε το youtube από τους σελιδοδείκτες", "βγάλε το facebook από τα αγαπημένα", "delete bookmark github"), reply ONLY with "REMOVE_BOOKMARK".
-					- Otherwise, for any general question, chat, or web search request, reply ONLY with "TEXT".`
-				}]
-			}]
+		// 1. Φάση Δρομολόγησης (Intelligent Routing) μέσω LOCAL GEMMA
+		// deterministic επιλογή (temperature 0.0) για μέγιστη σταθερότητα
+		const routerResponse = await ollama.generate({
+			model: 'gemma2:2b',
+			prompt: `Analyze the user input: "${prompt}".
+			Respond with ONLY ONE of the following uppercase words based on the intent:
+			- "IMAGE" if they want to generate, draw, or create an image/visual.
+			- "NAVIGATE" if they want to open, launch, go to, or visit a specific website or URL.
+			- "THEME" if they want to change, toggle, or set the theme or mode (dark/light/system).
+			- "TOOLBAR" if they want to move or change the position of the toolbar/navbar to the top or bottom.
+			- "SEARCH_ENGINE" if they want to change or set the default search engine to any website.
+			- "BOOKMARK" if they want to add or save a website to their bookmarks or favorites.
+			- "REMOVE_BOOKMARK" if they want to remove, delete, or clear a website from their bookmarks.
+			- "TEXT" for any general question, conversation, chat, or web search request.
+
+			Do not include punctuation, explanations, or markdown. Output exactly one word.`,
+			options: {
+				temperature: 0.0
+			}
 		});
 
-		const decision = routerResult.text.trim().toUpperCase();
+		const decision = routerResponse.response.trim().toUpperCase();
+		console.log(`[Local Gemma Router] Decision: ${decision}`);
 
 		// 2. Εκτέλεση βάσει της απόφασης
 		if (decision === "IMAGE") {
-			// --- ΛΟΓΙΚΗ ΕΙΚΟΝΑΣ ΜΕ ΥΠΟΣΤΗΡΙΞΗ ΙΣΤΟΡΙΚΟΥ ---
+			// --- ΛΟΓΙΚΗ ΕΙΚΟΝΑΣ ΜΕ ΥΠΟΣΤΗΡΙΞΗ ΙΣΤΟΡΙΚΟΥ (Gemini Cloud) ---
 			console.log("[Image Engine] Context-aware image generation triggered.");
 
-			// 1. Χρησιμοποιούμε το CHAT_MODEL για να διαβάσει το ιστορικό και να συνθέσει το τελικό prompt εικόνας
 			const contextChat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
@@ -227,12 +99,10 @@ app.post('/api/chat', async (req, res) => {
 
 					CRITICAL RULES:
 					- Output ONLY the final English prompt.
-					- Do not include explanations, intro text, markdown formatting, or quotes.
-					- If the latest request translates or modifies a previous subject from the history, ensure the prompt reflects those updates accurately.`
+					- Do not include explanations, intro text, markdown formatting, or quotes.`
 				}
 			});
 
-			// Ζητάμε από το chat μοντέλο να μας φτιάξει το τελικό prompt βασισμένο στο ιστορικό
 			const promptSynthesisResponse = await contextChat.sendMessage({
 				message: prompt
 			});
@@ -240,12 +110,10 @@ app.post('/api/chat', async (req, res) => {
 
 			console.log(`[Image Engine] Synthesized Prompt from history: "${synthesizedPrompt}"`);
 
-			// 2. Προετοιμασία των parts για το μοντέλο εικόνας
 			const currentParts = [{
 				text: synthesizedPrompt
 			}];
 
-			// Αν ο χρήστης έστειλε και input εικόνες (Image-to-Image)
 			if (images && Array.isArray(images)) {
 				images.forEach(imgBase64 => {
 					currentParts.push({
@@ -256,7 +124,6 @@ app.post('/api/chat', async (req, res) => {
 				});
 			}
 
-			// 3. Κλήση του μοντέλου εικόνας με το έτοιμο prompt που περιέχει όλο το context
 			const response = await ai.models.generateContent({
 				model: IMAGE_MODEL,
 				contents: [{
@@ -271,7 +138,6 @@ app.post('/api/chat', async (req, res) => {
 				}
 			});
 
-			// 4. Εξαγωγή της εικόνας
 			const candidate = response.candidates ? response.candidates[0]: null;
 			const parts = candidate?.content?.parts;
 
@@ -296,235 +162,139 @@ app.post('/api/chat', async (req, res) => {
 			});
 
 		} else if (decision === "NAVIGATE") {
-			// --- ΛΟΓΙΚΗ ΠΛΟΗΓΗΣΗΣ ---
-			const chat = ai.chats.create({
-				model: CHAT_MODEL,
-				history: history || [],
-				config: {
-					systemInstruction: "You are the OxyZen Browser navigator. Your ONLY job is to return a function call to 'open_url' for the website the user requested. Do not write text, do not write code blocks, just call the tool.",
-					tools: [openUrlTool],
-					safetySettings: safety,
-				},
-			});
+			// --- UI TASK: ΠΛΟΗΓΗΣΗ (Local Gemma JSON Extraction) ---
+			const gemmaPrompt = `Extract the website URL the user wants to open from this request: "${prompt}".
+			Respond ONLY with a valid JSON object like this: {"url": "https://example.com"}.
+			If no specific URL is provided, infer the most logical one. Include http:// or https://.`;
 
-			const response = await chat.sendMessage({
-				message: prompt
-			});
-			const functionCalls = response.functionCalls;
-
-			if (functionCalls && functionCalls.length > 0) {
-				const call = functionCalls[0];
-				if (call.name === "open_url") {
-					const targetUrl = call.args.url;
-					return res.json({
-						text: `<div class="thought">Navigating to requested site...</div><p>Opening link: <a href="${targetUrl}" target="_blank">${targetUrl}</a></p>`,
-						openUrl: targetUrl,
-						token: response.usageMetadata?.totalTokenCount || 0
-					});
+			const gemmaRes = await ollama.generate({
+				model: 'gemma2:2b',
+				prompt: gemmaPrompt,
+				format: 'json',
+				options: {
+					temperature: 0.1
 				}
-			}
+			});
 
+			const parsed = JSON.parse(gemmaRes.response);
 			return res.json({
-				text: `<div class="thought">Fallback navigation handling.</div><p>Opening link: <a href="${prompt}" target="_blank">${prompt}</a></p>`,
-				openUrl: prompt.includes("http") ? prompt: `https://google.com/search?q=${encodeURIComponent(prompt)}`,
-				token: response.usageMetadata?.totalTokenCount || 0
+				text: `<div class="thought">Gemma Local Routing...</div><p>Opening link: <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`,
+				openUrl: parsed.url,
+				token: 0
 			});
 
 		} else if (decision === "THEME") {
-			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΘΕΜΑΤΟΣ ---
-			const chat = ai.chats.create({
-				model: CHAT_MODEL,
-				history: history || [],
-				config: {
-					systemInstruction: "You are the OxyZen Browser UI controller. Your ONLY job is to return a function call to 'set_theme' with the appropriate mode (dark, light, or system) based on the user's request. Do not write text, do not write code blocks, just call the tool.",
-					tools: [setThemeTool],
-					safetySettings: safety,
-				},
-			});
+			// --- UI TASK: ΑΛΛΑΓΗ ΘΕΜΑΤΟΣ (Local Gemma JSON Extraction) ---
+			const gemmaPrompt = `Identify the target theme (dark, light, or system) from this request: "${prompt}".
+			Respond ONLY with a valid JSON object like this: {"theme": "dark"}.`;
 
-			const response = await chat.sendMessage({
-				message: prompt
-			});
-			const functionCalls = response.functionCalls;
-
-			if (functionCalls && functionCalls.length > 0) {
-				const call = functionCalls[0];
-				if (call.name === "set_theme") {
-					const targetTheme = call.args.theme;
-					return res.json({
-						text: `<div class="thought">Changing theme to ${targetTheme}...</div><p>Changing appearance to <strong>${targetTheme} mode</strong>.</p>`,
-						setTheme: targetTheme,
-						token: response.usageMetadata?.totalTokenCount || 0
-					});
+			const gemmaRes = await ollama.generate({
+				model: 'gemma2:2b',
+				prompt: gemmaPrompt,
+				format: 'json',
+				options: {
+					temperature: 0.0
 				}
-			}
+			});
 
+			const parsed = JSON.parse(gemmaRes.response);
 			return res.json({
-				text: `<div class="thought">Fallback theme handling.</div><p>Setting theme to dark mode by default.</p>`,
-				setTheme: "dark",
-				token: response.usageMetadata?.totalTokenCount || 0
+				text: `<div class="thought">Gemma Local UI control...</div><p>Changing appearance to <strong>${parsed.theme} mode</strong>.</p>`,
+				setTheme: parsed.theme,
+				token: 0
 			});
 
 		} else if (decision === "TOOLBAR") {
-			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΘΕΣΗΣ TOOLBAR ---
-			const chat = ai.chats.create({
-				model: CHAT_MODEL,
-				history: history || [],
-				config: {
-					systemInstruction: "You are the OxyZen Browser UI controller. Your ONLY job is to return a function call to 'set_toolbar_position' with the appropriate position (top or bottom) based on the user's request. Do not write text, do not write code blocks, just call the tool.",
-					tools: [setToolbarPositionTool],
-					safetySettings: safety,
-				},
-			});
+			// --- UI TASK: ΘΕΣΗ TOOLBAR (Local Gemma JSON Extraction) ---
+			const gemmaPrompt = `Identify the target toolbar position (top or bottom) from this request: "${prompt}".
+			Respond ONLY with a valid JSON object like this: {"position": "top"}.`;
 
-			const response = await chat.sendMessage({
-				message: prompt
-			});
-			const functionCalls = response.functionCalls;
-
-			if (functionCalls && functionCalls.length > 0) {
-				const call = functionCalls[0];
-				if (call.name === "set_toolbar_position") {
-					const targetPosition = call.args.position;
-					const greekPosition = targetPosition === "top" ? "κορυφή": "πάτο";
-					return res.json({
-						text: `<div class="thought">Moving toolbar to ${targetPosition}...</div><p>Μετακίνηση του toolbar στην <strong>${greekPosition}</strong> της σελίδας.</p>`,
-						setToolbarPosition: targetPosition,
-						token: response.usageMetadata?.totalTokenCount || 0
-					});
+			const gemmaRes = await ollama.generate({
+				model: 'gemma2:2b',
+				prompt: gemmaPrompt,
+				format: 'json',
+				options: {
+					temperature: 0.0
 				}
-			}
+			});
 
+			const parsed = JSON.parse(gemmaRes.response);
+			const greekPosition = parsed.position === "top" ? "κορυφή": "πάτο";
 			return res.json({
-				text: `<div class="thought">Fallback toolbar handling.</div><p>Το toolbar μετακινήθηκε στην κορυφή από προεπιλογή.</p>`,
-				setToolbarPosition: "top",
-				token: response.usageMetadata?.totalTokenCount || 0
+				text: `<div class="thought">Gemma Local UI control...</div><p>Μετακίνηση του toolbar στην <strong>${greekPosition}</strong> της σελίδας.</p>`,
+				setToolbarPosition: parsed.position,
+				token: 0
 			});
 
 		} else if (decision === "SEARCH_ENGINE") {
-			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΜΗΧΑΝΗΣ ΑΝΑΖΗΤΗΣΗΣ ---
-			const chat = ai.chats.create({
-				model: CHAT_MODEL,
-				history: history || [],
-				config: {
-					systemInstruction: `You are the OxyZen Browser configuration assistant. Your job is to return a function call to 'set_search_engine' based on the website the user wants to use for their default searches.
-					You must dynamically construct or provide the correct URL template using '%s' as the query placeholder.
+			// --- UI TASK: ΜΗΧΑΝΗ ΑΝΑΖΗΤΗΣΗΣ (Local Gemma JSON Extraction) ---
+			const gemmaPrompt = `The user wants to change their search engine: "${prompt}".
+			Identify the engine name and create its standard search URL template using '%s' for the query placeholder.
+			Respond ONLY with a valid JSON object like this: {"engine": "youtube", "searchUrl": "https://www.youtube.com/results?search_query=%s"}.`;
 
-					Common examples to follow:
-					- google: https://www.google.com/search?q=%s
-					- youtube: https://www.youtube.com/results?search_query=%s
-					- wikipedia: https://en.wikipedia.org/w/index.php?search=%s
-					- github: https://github.com/search?q=%s
-					- reddit: https://www.reddit.com/search/?q=%s
-					- duckduckgo: https://html.duckduckgo.com/html/?q=%s
-
-					If the user requests a site not on this list, infer its standard search URL structure and replace the query parameter with %s. Do not write text, do not write code blocks, just call the tool.`,
-					tools: [setSearchEngineTool],
-					safetySettings: safety,
-				},
-			});
-
-			const response = await chat.sendMessage({
-				message: prompt
-			});
-			const functionCalls = response.functionCalls;
-
-			if (functionCalls && functionCalls.length > 0) {
-				const call = functionCalls[0];
-				if (call.name === "set_search_engine") {
-					const targetEngine = call.args.engine;
-					const targetUrl = call.args.searchUrl;
-
-					return res.json({
-						text: `<div class="thought">Setting default search engine to ${targetEngine}...</div><p>Η προεπιλεγμένη αναζήτηση ορίστηκε πλέον μέσω <strong>${targetEngine}</strong>.</p>`,
-						setSearchEngine: targetEngine,
-						searchUrlTemplate: targetUrl,
-						token: response.usageMetadata?.totalTokenCount || 0
-					});
+			const gemmaRes = await ollama.generate({
+				model: 'gemma2:2b',
+				prompt: gemmaPrompt,
+				format: 'json',
+				options: {
+					temperature: 0.1
 				}
-			}
+			});
 
+			const parsed = JSON.parse(gemmaRes.response);
 			return res.json({
-				text: `<div class="thought">Fallback search engine handling.</div><p>Η προεπιλεγμένη μηχανή αναζήτησης ορίστηκε σε Google.</p>`,
-				setSearchEngine: "google",
-				searchUrlTemplate: "https://www.google.com/search?q=%s",
-				token: response.usageMetadata?.totalTokenCount || 0
+				text: `<div class="thought">Gemma Local Configuration...</div><p>Η προεπιλεγμένη αναζήτηση ορίστηκε μέσω <strong>${parsed.engine}</strong>.</p>`,
+				setSearchEngine: parsed.engine,
+				searchUrlTemplate: parsed.searchUrl,
+				token: 0
 			});
 
 		} else if (decision === "BOOKMARK") {
-			// --- ΛΟΓΙΚΗ ΠΡΟΣΘΗΚΗΣ ΣΕΛΙΔΟΔΕΙΚΤΗ ---
-			const chat = ai.chats.create({
-				model: CHAT_MODEL,
-				history: history || [],
-				config: {
-					systemInstruction: "You are the OxyZen Browser assistant. Your ONLY job is to return a function call to 'add_bookmark' with the correct title and full URL of the website the user wants to save. If the user doesn't provide a full URL, infer the most logical one (e.g., 'YouTube' -> 'https://www.youtube.com'). Do not write text, do not write code blocks, just call the tool.",
-					tools: [addBookmarkTool],
-					safetySettings: safety,
-				},
-			});
+			// --- UI TASK: ΠΡΟΣΘΗΚΗ ΣΕΛΙΔΟΔΕΙΚΤΗ (Local Gemma JSON Extraction) ---
+			const gemmaPrompt = `Extract the title and full URL for a bookmark from this request: "${prompt}".
+			If the user doesn't provide a full URL, infer the most logical one.
+			Respond ONLY with a valid JSON object like this: {"title": "Google", "url": "https://google.com"}.`;
 
-			const response = await chat.sendMessage({
-				message: prompt
-			});
-			const functionCalls = response.functionCalls;
-
-			if (functionCalls && functionCalls.length > 0) {
-				const call = functionCalls[0];
-				if (call.name === "add_bookmark") {
-					const bookmarkTitle = call.args.title;
-					const bookmarkUrl = call.args.url;
-
-					return res.json({
-						text: `<div class="thought">Adding bookmark for ${bookmarkTitle}...</div><p>Η ιστοσελίδα <strong>${bookmarkTitle}</strong> προστέθηκε επιτυχώς στους σελιδοδείκτες σου!</p>`,
-						addTitle: bookmarkTitle,
-						addUrl: bookmarkUrl,
-						token: response.usageMetadata?.totalTokenCount || 0
-					});
+			const gemmaRes = await ollama.generate({
+				model: 'gemma2:2b',
+				prompt: gemmaPrompt,
+				format: 'json',
+				options: {
+					temperature: 0.1
 				}
-			}
+			});
 
+			const parsed = JSON.parse(gemmaRes.response);
 			return res.json({
-				text: `<div class="thought">Fallback bookmark handling.</div><p>Δεν μπόρεσα να αποθηκεύσω τον σελιδοδείκτη αυτόματα.</p>`,
-				token: response.usageMetadata?.totalTokenCount || 0
+				text: `<div class="thought">Gemma Local Bookmarks...</div><p>Η ιστοσελίδα <strong>${parsed.title}</strong> προστέθηκε επιτυχώς στους σελιδοδείκτες σου!</p>`,
+				addTitle: parsed.title,
+				addUrl: parsed.url,
+				token: 0
 			});
 
 		} else if (decision === "REMOVE_BOOKMARK") {
-			// --- ΛΟΓΙΚΗ ΑΦΑΙΡΕΣΗΣ ΣΕΛΙΔΟΔΕΙΚΤΗ ---
-			const chat = ai.chats.create({
-				model: CHAT_MODEL,
-				history: history || [],
-				config: {
-					systemInstruction: "You are the OxyZen Browser assistant. Your ONLY job is to return a function call to 'remove_bookmark' with the title or core name of the website the user wants to delete from their bookmarks. Do not write text, do not write code blocks, just call the tool.",
-					tools: [removeBookmarkTool],
-					safetySettings: safety,
-				},
-			});
+			// --- UI TASK: ΑΦΑΙΡΕΣΗ ΣΕΛΙΔΟΔΕΙΚΤΗ (Local Gemma JSON Extraction) ---
+			const gemmaPrompt = `Extract the title or core keyword of the bookmark to remove from this request: "${prompt}".
+			Respond ONLY with a valid JSON object like this: {"title": "Google"}.`;
 
-			const response = await chat.sendMessage({
-				message: prompt
-			});
-			const functionCalls = response.functionCalls;
-
-			if (functionCalls && functionCalls.length > 0) {
-				const call = functionCalls[0];
-				if (call.name === "remove_bookmark") {
-					const bookmarkTitle = call.args.title;
-
-					return res.json({
-						text: `<div class="thought">Removing bookmark for ${bookmarkTitle}...</div><p>Ο σελιδοδείκτης <strong>${bookmarkTitle}</strong> αφαιρέθηκε.</p>`,
-						removeTitle: bookmarkTitle,
-						token: response.usageMetadata?.totalTokenCount || 0
-					});
+			const gemmaRes = await ollama.generate({
+				model: 'gemma2:2b',
+				prompt: gemmaPrompt,
+				format: 'json',
+				options: {
+					temperature: 0.0
 				}
-			}
+			});
 
+			const parsed = JSON.parse(gemmaRes.response);
 			return res.json({
-				text: `<div class="thought">Fallback remove bookmark handling.</div><p>Δεν μπόρεσα να αφαιρέσω τον σελιδοδείκτη αυτόματα.</p>`,
-				token: response.usageMetadata?.totalTokenCount || 0
+				text: `<div class="thought">Gemma Local Bookmarks...</div><p>Ο σελιδοδείκτης <strong>${parsed.title}</strong> αφαιρέθηκε.</p>`,
+				removeTitle: parsed.title,
+				token: 0
 			});
 
 		} else {
-			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
+			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH (Gemini Cloud) ---
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
 				history: history || [],
@@ -560,8 +330,7 @@ app.post('/api/chat', async (req, res) => {
 		}
 
 	} catch (globalError) {
-		// ΚΑΘΟΛΙΚΟ FALLBACK
-		console.warn("🚨 Κρίσιμο σφάλμα Google API. Ενεργοποίηση Καθολικού PaxSenix Fallback:", globalError.message);
+		console.warn("🚨 Σφάλμα διεργασίας. Ενεργοποίηση Καθολικού PaxSenix Fallback:", globalError.message);
 
 		try {
 			const paxResponse = await paxsenix.createChatCompletion({
@@ -581,7 +350,7 @@ app.post('/api/chat', async (req, res) => {
 			});
 
 		} catch (paxError) {
-			console.error("Fatal Error (Both Gemini and PaxSenix failed):", paxError);
+			console.error("Fatal Error (Both Models failed):", paxError);
 			return res.status(500).json({
 				error: "Όλες οι υπηρεσίες τεχνητής νοημοσύνης είναι προσωρινά μη διαθέσιμες."
 			});
