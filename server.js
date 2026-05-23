@@ -213,21 +213,39 @@ app.post('/api/chat', async (req, res) => {
 
 		// 2. Εκτέλεση βάσει της απόφασης
 		if (decision.includes("IMAGE")) {
-			// --- ΛΟΓΙΚΗ ΕΙΚΟΝΑΣ ---
-			const contents = [];
-			if (history && Array.isArray(history)) {
-				history.forEach(msg => {
-					contents.push({
-						role: msg.role, parts: [{
-							text: msg.parts[0].text
-						}]
-					});
-				});
-			}
+			// --- ΛΟΓΙΚΗ ΕΙΚΟΝΑΣ ΜΕ ΥΠΟΣΤΗΡΙΞΗ ΙΣΤΟΡΙΚΟΥ ---
+			console.log("[Image Engine] Context-aware image generation triggered.");
 
+			// 1. Χρησιμοποιούμε το CHAT_MODEL για να διαβάσει το ιστορικό και να συνθέσει το τελικό prompt εικόνας
+			const contextChat = ai.chats.create({
+				model: CHAT_MODEL,
+				history: history || [],
+				config: {
+					systemInstruction: `You are an expert prompt expander for an image generation model.
+					Analyze the conversation history and the user's latest request.
+					Your task is to output a single, highly-detailed image generation prompt in English that captures the user's full intent, combining past context with the new request.
+
+					CRITICAL RULES:
+					- Output ONLY the final English prompt.
+					- Do not include explanations, intro text, markdown formatting, or quotes.
+					- If the latest request translates or modifies a previous subject from the history, ensure the prompt reflects those updates accurately.`
+				}
+			});
+
+			// Ζητάμε από το chat μοντέλο να μας φτιάξει το τελικό prompt βασισμένο στο ιστορικό
+			const promptSynthesisResponse = await contextChat.sendMessage({
+				message: prompt
+			});
+			const synthesizedPrompt = promptSynthesisResponse.text.trim();
+
+			console.log(`[Image Engine] Synthesized Prompt from history: "${synthesizedPrompt}"`);
+
+			// 2. Προετοιμασία των parts για το μοντέλο εικόνας
 			const currentParts = [{
-				text: prompt
+				text: synthesizedPrompt
 			}];
+
+			// Αν ο χρήστης έστειλε και input εικόνες (Image-to-Image)
 			if (images && Array.isArray(images)) {
 				images.forEach(imgBase64 => {
 					currentParts.push({
@@ -237,15 +255,14 @@ app.post('/api/chat', async (req, res) => {
 					});
 				});
 			}
-			contents.push({
-				role: "user", parts: currentParts
-			});
 
-			const response = await ai.chats.create({
+			// 3. Κλήση του μοντέλου εικόνας με το έτοιμο prompt που περιέχει όλο το context
+			const response = await ai.models.generateContent({
 				model: IMAGE_MODEL,
-				contents: contents,
+				contents: [{
+					role: "user", parts: currentParts
+				}],
 				config: {
-					systemInstruction: IMAGE_SYSTEM_INSTRUCTION,
 					responseModalities: ['IMAGE'],
 					safetySettings: safety,
 					imageConfig: {
@@ -254,6 +271,7 @@ app.post('/api/chat', async (req, res) => {
 				}
 			});
 
+			// 4. Εξαγωγή της εικόνας
 			const candidate = response.candidates ? response.candidates[0]: null;
 			const parts = candidate?.content?.parts;
 
@@ -274,7 +292,7 @@ app.post('/api/chat', async (req, res) => {
 				success: true,
 				text: "Here is your requested image:",
 				images: generatedImages,
-				token: response.usageMetadata.totalTokenCount
+				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
 		} else if (decision.includes("NAVIGATE")) {
