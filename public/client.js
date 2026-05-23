@@ -167,8 +167,7 @@ async function sendChat(prompt, imageData = null, mimeType = null) {
 			let dataState = null;
 
 			if (data.openUrl) {
-				functionState = "NAVIGATE";
-				dataState = data.openUrl;
+				window.location.href = data.openUrl;
 			}
 
 			if (data.setTheme) {
