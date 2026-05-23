@@ -212,7 +212,7 @@ app.post('/api/chat', async (req, res) => {
 		const decision = routerResult.text.trim().toUpperCase();
 
 		// 2. Εκτέλεση βάσει της απόφασης
-		if (decision.includes("IMAGE")) {
+		if (decision === "IMAGE") {
 			// --- ΛΟΓΙΚΗ ΕΙΚΟΝΑΣ ΜΕ ΥΠΟΣΤΗΡΙΞΗ ΙΣΤΟΡΙΚΟΥ ---
 			console.log("[Image Engine] Context-aware image generation triggered.");
 
@@ -295,7 +295,7 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
-		} else if (decision.includes("NAVIGATE")) {
+		} else if (decision === "NAVIGATE") {
 			// --- ΛΟΓΙΚΗ ΠΛΟΗΓΗΣΗΣ ---
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
@@ -330,7 +330,7 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
-		} else if (decision.includes("THEME")) {
+		} else if (decision === "THEME") {
 			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΘΕΜΑΤΟΣ ---
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
@@ -365,7 +365,7 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
-		} else if (decision.includes("TOOLBAR")) {
+		} else if (decision === "TOOLBAR") {
 			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΘΕΣΗΣ TOOLBAR ---
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
@@ -401,7 +401,7 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
-		} else if (decision.includes("SEARCH_ENGINE")) {
+		} else if (decision === "SEARCH_ENGINE") {
 			// --- ΛΟΓΙΚΗ ΑΛΛΑΓΗΣ ΜΗΧΑΝΗΣ ΑΝΑΖΗΤΗΣΗΣ ---
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
@@ -451,7 +451,7 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
-		} else if (decision.includes("BOOKMARK")) {
+		} else if (decision === "BOOKMARK") {
 			// --- ΛΟΓΙΚΗ ΠΡΟΣΘΗΚΗΣ ΣΕΛΙΔΟΔΕΙΚΤΗ ---
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
@@ -488,7 +488,7 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
-		} else if (decision.includes("REMOVE_BOOKMARK")) {
+		} else if (decision === "REMOVE_BOOKMARK") {
 			// --- ΛΟΓΙΚΗ ΑΦΑΙΡΕΣΗΣ ΣΕΛΙΔΟΔΕΙΚΤΗ ---
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
