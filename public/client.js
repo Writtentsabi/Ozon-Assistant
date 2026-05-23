@@ -162,12 +162,18 @@ async function sendChat(prompt, imageData = null, mimeType = null) {
 			} = parseResponse(data.text);
 
 			outputLi.innerHTML = `<p>${answerText}</p>`;
-			
+
 			let functionState = null;
 			let dataState = null;
 
 			if (data.openUrl) {
-				window.location.href = data.openUrl;
+				if (window.self !== window.top) {
+					functionState = "NAVIGATE";
+					dataState = data.openUrl;
+				} else {
+					window.location.href = data.openUrl;
+				}
+
 			}
 
 			if (data.setTheme) {
