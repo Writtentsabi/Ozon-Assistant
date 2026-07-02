@@ -202,14 +202,19 @@ app.post('/api/chat', async (req, res) => {
 				systemPrompt = `Identify the target theme (dark, light, or system). Respond ONLY with JSON. Example: {"theme": "dark"}.`;
 				responseSchemaObj = {
 					theme: {
-						type: Type.STRING
+						type: Type.STRING,
+						enum: ["dark",
+							"light",
+							"system"]
 					}
 				};
+
 			} else if (decision === "TOOLBAR") {
 				systemPrompt = `Identify the toolbar position (top or bottom). Respond ONLY with JSON. Example: {"position": "top"}.`;
 				responseSchemaObj = {
 					position: {
-						type: Type.STRING
+						type: Type.STRING,
+						enum: ["top","bottom"]
 					}
 				};
 			} else if (decision === "SEARCH_ENGINE") {
@@ -240,10 +245,11 @@ app.post('/api/chat', async (req, res) => {
 					}
 				};
 			} else if (decision === "SCALE") {
-				systemPrompt = `Identify the requested scale level. It MUST be an integer between 0 and 5 based on user input. Respond ONLY with JSON. Example: {"scale": 3}.`;
+				systemPrompt = `Identify the requested scale level. It MUST be an integer between 0 and 5 based on user input. If the user requests a value higher than 5, return 5. If they request lower than 0, return 0. Respond ONLY with JSON. Example: {"scale": 3}.`;
 				responseSchemaObj = {
 					scale: {
-						type: Type.INTEGER
+						type: Type.INTEGER,
+						enum: [0,1,2,3,4,5]
 					}
 				};
 			}
