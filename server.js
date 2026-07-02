@@ -214,7 +214,8 @@ app.post('/api/chat', async (req, res) => {
 				responseSchemaObj = {
 					position: {
 						type: Type.STRING,
-						enum: ["top","bottom"]
+						enum: ["top",
+							"bottom"]
 					}
 				};
 			} else if (decision === "SEARCH_ENGINE") {
@@ -248,8 +249,13 @@ app.post('/api/chat', async (req, res) => {
 				systemPrompt = `Identify the requested scale level. It MUST be an integer between 0 and 5 based on user input. If the user requests a value higher than 5, return 5. If they request lower than 0, return 0. Respond ONLY with JSON. Example: {"scale": 3}.`;
 				responseSchemaObj = {
 					scale: {
-						type: Type.INTEGER,
-						enum: [0,1,2,3,4,5]
+						type: Type.STRING,
+						enum: ["0",
+							"1",
+							"2",
+							"3",
+							"4",
+							"5"]
 					}
 				};
 			}
@@ -298,10 +304,16 @@ app.post('/api/chat', async (req, res) => {
 					text: `<div class="thought">Zen Bookmarks...</div><p>Ο σελιδοδείκτης <strong>${parsed.title}</strong> αφαιρέθηκε.</p>`, removeTitle: parsed.title, token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "SCALE") {
+				// Μετατροπή του string "0"-"5" σε κανονικό integer
+				const finalScale = parseInt(parsed.scale, 10);
+
 				return res.json({
-					text: `<div class="thought">Zen UI Control...</div><p>Η κλίμακα της σελίδας ορίστηκε στο <strong>${parsed.scale}</strong>.</p>`, setScale: parsed.scale, token: uiResponse.usageMetadata?.totalTokenCount || 0
+					text: `<div class="thought">Zen UI Control...</div><p>Η κλίμακα της σελίδας ορίστηκε στο <strong>${finalScale}</strong>.</p>`,
+					setScale: finalScale, // Στέλνει καθαρό αριθμό (π.χ. 3 αντί για "3")
+					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			}
+
 
 		} else {
 			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
