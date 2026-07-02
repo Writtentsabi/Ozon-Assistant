@@ -86,6 +86,7 @@ app.post('/api/chat', async (req, res) => {
 				- SEARCH_ENGINE (change or set the default search engine)
 				- BOOKMARK (add or save a website to bookmarks)
 				- REMOVE_BOOKMARK (remove or delete a website from bookmarks)
+				- SCALE (change, set, increase, or decrease font size, UI scale, or zoom scale to 0, 1, 2, 3, 4, or 5)
 				- TEXT (general question, chat, or web search request)`,
 				responseMimeType: "application/json",
 				responseSchema: {
@@ -144,7 +145,7 @@ app.post('/api/chat', async (req, res) => {
 				});
 			}
 
-			// Timeout στην δημιουργία εικόνας (δίνουμε λίγο παραπάνω χρόνο εδώ, π.χ. 12s)
+			// Timeout στην δημιουργία εικόνας
 			const imagePromise = ai.models.generateContent({
 				model: IMAGE_MODEL,
 				contents: [{
@@ -184,9 +185,9 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
-		} else if (decision === "NAVIGATE" || decision === "THEME" || decision === "TOOLBAR" || decision === "SEARCH_ENGINE" || decision === "BOOKMARK" || decision === "REMOVE_BOOKMARK") {
+		} else if (decision === "NAVIGATE" || decision === "THEME" || decision === "TOOLBAR" || decision === "SEARCH_ENGINE" || decision === "BOOKMARK" || decision === "REMOVE_BOOKMARK" || decision === "SCALE") {
 
-			// --- UI TASKS GROUP (Συμπυκνωμένο block για εξοικονόμηση χώρου, διατηρώντας τη δομή σου) ---
+			// --- UI TASKS GROUP ---
 			let systemPrompt = "";
 			let responseSchemaObj = {};
 
@@ -238,6 +239,13 @@ app.post('/api/chat', async (req, res) => {
 						type: Type.STRING
 					}
 				};
+			} else if (decision === "SCALE") {
+				systemPrompt = `Identify the requested scale level. It MUST be an integer between 0 and 5 based on user input. Respond ONLY with JSON. Example: {"scale": 3}.`;
+				responseSchemaObj = {
+					scale: {
+						type: Type.INTEGER
+					}
+				};
 			}
 
 			const uiPromise = ai.models.generateContent({
@@ -283,6 +291,10 @@ app.post('/api/chat', async (req, res) => {
 				return res.json({
 					text: `<div class="thought">Zen Bookmarks...</div><p>Ο σελιδοδείκτης <strong>${parsed.title}</strong> αφαιρέθηκε.</p>`, removeTitle: parsed.title, token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
+			} else if (decision === "SCALE") {
+				return res.json({
+					text: `<div class="thought">Zen UI Control...</div><p>Η κλίμακα της σελίδας ορίστηκε στο <strong>${parsed.scale}</strong>.</p>`, setScale: parsed.scale, token: uiResponse.usageMetadata?.totalTokenCount || 0
+				});
 			}
 
 		} else {
@@ -327,12 +339,12 @@ app.post('/api/chat', async (req, res) => {
 		}
 
 	} catch (globalError) {
-		// Εδώ "πιάνεται" πλέον ΚΑΙ το timeout της Google!
+		// Καθολικό PaxSenix Fallback λόγω σφάλματος ή Timeout
 		console.warn("🚨 Ενεργοποίηση Καθολικού PaxSenix Fallback λόγω:", globalError.message);
 
 		try {
 			const paxResponse = await paxsenix.createChatCompletion({
-				model: 'gpt-4o-mini', // Πολύ ανώτερο και γρήγορο για fallback
+				model: 'gpt-4o-mini',
 				messages: [{
 					role: 'system', content: SYSTEM_INSTRUCTION
 				},
