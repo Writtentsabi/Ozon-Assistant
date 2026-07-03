@@ -298,15 +298,21 @@ app.post('/api/chat', async (req, res) => {
 					text: `<div class="thought">Zen Bookmarks...</div><p>Ο σελιδοδείκτης <strong>${parsed.title}</strong> αφαιρέθηκε.</p>`, removeTitle: parsed.title, token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "SCALE") {
-				// Μετατροπή του string "0"-"5" σε κανονικό integer
-				const finalScale = parseInt(parsed.scale, 10);
+				// Ασφαλής εξαγωγή του αριθμού. Αν δεν υπάρχει ή είναι NaN, παίρνει προεπιλογή (π.χ. 3)
+				let finalScale = parseInt(parsed.scale, 10);
+
+				if (isNaN(finalScale)) {
+					// Fallback σε περίπτωση που το parsed.scale ήταν ήδη αριθμός ή undefined
+					finalScale = typeof parsed.scale === 'number' ? parsed.scale: 0;
+				}
 
 				return res.json({
 					text: `<div class="thought">Zen UI Control...</div><p>Η κλίμακα της σελίδας ορίστηκε στο <strong>${finalScale}</strong>.</p>`,
-					setScale: finalScale, // Στέλνει καθαρό αριθμό (π.χ. 3 αντί για "3")
+					setScale: finalScale,
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			}
+
 
 
 		} else {
