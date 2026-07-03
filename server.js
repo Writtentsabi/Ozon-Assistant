@@ -249,13 +249,7 @@ app.post('/api/chat', async (req, res) => {
 				systemPrompt = `Identify the requested scale level. It MUST be an integer between 0 and 5 based on user input. If the user requests a value higher than 5, return 5. If they request lower than 0, return 0. Respond ONLY with JSON. Example: {"scale": 3}.`;
 				responseSchemaObj = {
 					scale: {
-						type: Type.STRING,
-						enum: ["0",
-							"1",
-							"2",
-							"3",
-							"4",
-							"5"]
+						type: Type.INTEGER
 					}
 				};
 			}
