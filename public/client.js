@@ -3,7 +3,8 @@
 // Κρατάμε το ιστορικό στον client, καθώς ο server είναι stateless
 const historyArray = [];
 
-// --- INTERNATIONALIZATION (i18n) ---\nconst i18n = {
+// --- INTERNATIONALIZATION (i18n) ---
+const i18n = {
 el: {
 	placeholders: [
 		'Πες μου τη γνώμη σου...',
