@@ -1,4 +1,4 @@
-// server.js (Πλήρως Ενοποιημένη Έκδοση με Gemini 2.5 Flash-Lite Router - Έτοιμο για Render)
+// server.js (Πλήρως Βελτιωμένη Έκδοση με Gemini 2.5 Flash-Lite Router - Έτοιμο για Render)
 import 'dotenv/config';
 import express from 'express';
 import {
@@ -52,9 +52,9 @@ const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for
 CORE RULES:
 1. Every response MUST consist of two distinct sections:
 - <div class="thought">...your reasoning...</div>
-- FINAL RESPONSE in HTML (p, ul, strong, a).`;
+- FINAL RESPONSE in HTML (p, ul, strong, a).
+2. Do NOT wrap your entire response inside markdown code blocks like \`\`\`html. Return pure raw string.`;
 
-// --- Προσθήκη στην κορυφή του αρχείου, κάτω από τα imports ---
 const GOOGLE_TIMEOUT_MS = 8000; // 8 δευτερόλεπτα όριο για την Google
 
 const withTimeout = (promise, ms = GOOGLE_TIMEOUT_MS) => {
@@ -82,11 +82,16 @@ app.post('/api/chat', async (req, res) => {
 				- IMAGE (generate, draw, or create an image/visual)
 				- NAVIGATE (open, launch, go to, or visit a specific website)
 				- THEME (change or set the theme to dark, light, or system)
-				- TOOLBAR (move or change toolbar position to top or bottom)
+				- TOOLBAR (move or change toolbar position or status to top, bottom, show, hide, toggle)
 				- SEARCH_ENGINE (change or set the default search engine)
 				- BOOKMARK (add or save a website to bookmarks)
 				- REMOVE_BOOKMARK (remove or delete a website from bookmarks)
 				- SCALE (change, set, increase, or decrease font size, UI scale, or zoom scale to 0, 1, 2, 3, 4, or 5)
+				- JAVASCRIPT (change or set the JavaScript to true or false)
+				- COOKIES (change or set the cookies to true or false)
+				- PASSWORDS (change or set the password saving to true or false)
+				- DEVELOPER_SETTINGS (change or set the developer settings to true or false)
+				- VPN (change or set vpn settings to off, default or family)
 				- TEXT (general question, chat, or web search request)`,
 				responseMimeType: "application/json",
 				responseSchema: {
@@ -103,7 +108,6 @@ app.post('/api/chat', async (req, res) => {
 			}
 		});
 
-		// Εφαρμογή του timeout στον Router
 		const routerResponse = await withTimeout(routerPromise, GOOGLE_TIMEOUT_MS);
 		const routerJson = JSON.parse(routerResponse.text);
 		const decision = routerJson.decision.trim().toUpperCase();
@@ -124,7 +128,6 @@ app.post('/api/chat', async (req, res) => {
 				}
 			});
 
-			// Timeout στην σύνθεση του prompt
 			const promptSynthesisResponse = await withTimeout(contextChat.sendMessage({
 				message: prompt
 			}), GOOGLE_TIMEOUT_MS);
@@ -145,7 +148,6 @@ app.post('/api/chat', async (req, res) => {
 				});
 			}
 
-			// Timeout στην δημιουργία εικόνας
 			const imagePromise = ai.models.generateContent({
 				model: IMAGE_MODEL,
 				contents: [{
@@ -185,7 +187,7 @@ app.post('/api/chat', async (req, res) => {
 				token: response.usageMetadata?.totalTokenCount || 0
 			});
 
-		} else if (decision === "NAVIGATE" || decision === "THEME" || decision === "TOOLBAR" || decision === "SEARCH_ENGINE" || decision === "BOOKMARK" || decision === "REMOVE_BOOKMARK" || decision === "SCALE") {
+		} else if (["NAVIGATE", "THEME", "TOOLBAR", "SEARCH_ENGINE", "BOOKMARK", "REMOVE_BOOKMARK", "SCALE", "JAVASCRIPT", "COOKIES", "PASSWORDS", "DEVELOPER_SETTINGS", "VPN"].includes(decision)) {
 
 			// --- UI TASKS GROUP ---
 			let systemPrompt = "";
@@ -208,11 +210,10 @@ app.post('/api/chat', async (req, res) => {
 							"system"]
 					}
 				};
-
 			} else if (decision === "TOOLBAR") {
-				systemPrompt = `Identify the toolbar position (top or bottom). Respond ONLY with JSON. Example: {"position": "top"}.`;
+				systemPrompt = `Identify the toolbar action or position (top, bottom). Respond ONLY with JSON. Example: {"action": "hide"}.`;
 				responseSchemaObj = {
-					position: {
+					action: {
 						type: Type.STRING,
 						enum: ["top",
 							"bottom"]
@@ -252,6 +253,44 @@ app.post('/api/chat', async (req, res) => {
 						type: Type.INTEGER
 					}
 				};
+			} else if (decision === "JAVASCRIPT") {
+				systemPrompt = `Identify the JavaScript settings. It must be either true or false.`;
+				responseSchemaObj = {
+					javaScript: {
+						type: Type.BOOLEAN
+					}
+				};
+			} else if (decision === "COOKIES") {
+				systemPrompt = `Identify the cookies settings. It must be either true or false.`;
+				responseSchemaObj = {
+					cookies: {
+						type: Type.BOOLEAN
+					}
+				};
+			} else if (decision === "PASSWORDS") {
+				systemPrompt = `Identify the saving passwords settings. It must be either true or false.`;
+				responseSchemaObj = {
+					passwords: {
+						type: Type.BOOLEAN
+					}
+				};
+			} else if (decision === "DEVELOPER_SETTINGS") {
+				systemPrompt = `Identify the developer settings. It must be either true or false.`;
+				responseSchemaObj = {
+					developer: {
+						type: Type.BOOLEAN
+					}
+				};
+			} else if (decision === "VPN") {
+				systemPrompt = `Identify the vpn settings. It MUST be off, default or family.`;
+				responseSchemaObj = {
+					vpn: {
+						type: Type.STRING,
+						enum: ["off",
+							"default",
+							"family"]
+					}
+				};
 			}
 
 			const uiPromise = ai.models.generateContent({
@@ -271,49 +310,129 @@ app.post('/api/chat', async (req, res) => {
 			const uiResponse = await withTimeout(uiPromise, GOOGLE_TIMEOUT_MS);
 			const parsed = JSON.parse(uiResponse.text);
 
-			// Επιστροφή των κατάλληλων δεδομένων ανάλογα με την απόφαση
+			// Επιστροφή δεδομένων με πλήρη υποστήριξη για function και data
 			if (decision === "NAVIGATE") {
 				return res.json({
-					text: `<div class="thought">Zen Auto-Routing...</div><p>Μετάβαση στον σύνδεσμο: <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`, openUrl: parsed.url, token: uiResponse.usageMetadata?.totalTokenCount || 0
+					text: `<div class="thought">Zen Auto-Routing...</div><p>Μετάβαση στον σύνδεσμο: <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`,
+					function: "NAVIGATE",
+					data: parsed.url,
+					openUrl: parsed.url,
+					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "THEME") {
 				return res.json({
-					text: `<div class="thought">Zen UI Control...</div><p>Αλλαγή εμφάνισης σε <strong>${parsed.theme} mode</strong>.</p>`, setTheme: parsed.theme, token: uiResponse.usageMetadata?.totalTokenCount || 0
+					text: `<div class="thought">Zen UI Control...</div><p>Αλλαγή εμφάνισης σε <strong>${parsed.theme} mode</strong>.</p>`,
+					function: "THEME",
+					data: parsed.theme,
+					setTheme: parsed.theme,
+					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "TOOLBAR") {
-				const greekPosition = parsed.position === "top" ? "κορυφή": "πάτο";
+				let greekAction = parsed.action;
+				if (parsed.action === "top") greekAction = "κορυφή";
+				else if (parsed.action === "bottom") greekAction = "κάτω μέρος";
+				else if (parsed.action === "show") greekAction = "εμφάνιση";
+				else if (parsed.action === "hide") greekAction = "απόκρυψη";
+				else if (parsed.action === "toggle") greekAction = "εναλλαγή";
+
 				return res.json({
-					text: `<div class="thought">Zen UI Control...</div><p>Μετακίνηση του toolbar στην <strong>${greekPosition}</strong> της σελίδας.</p>`, setToolbarPosition: parsed.position, token: uiResponse.usageMetadata?.totalTokenCount || 0
+					text: `<div class="thought">Zen UI Control...</div><p>Εκτέλεση ενέργειας toolbar: <strong>${greekAction}</strong>.</p>`,
+					function: "TOOLBAR",
+					data: parsed.action,
+					setToolbarPosition: parsed.action, // για συμβατότητα με παλιό κώδικα
+					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "SEARCH_ENGINE") {
 				return res.json({
-					text: `<div class="thought">Zen Engine Configuration...</div><p>Η προεπιλεγμένη αναζήτηση ορίστηκε μέσω <strong>${parsed.engine}</strong>.</p>`, setSearchEngine: parsed.engine, searchUrlTemplate: parsed.searchUrl, token: uiResponse.usageMetadata?.totalTokenCount || 0
+					text: `<div class="thought">Zen Engine Configuration...</div><p>Η προεπιλεγμένη αναζήτηση ορίστηκε μέσω <strong>${parsed.engine}</strong>.</p>`,
+					function: "SEARCH_ENGINE",
+					data: parsed.engine,
+					setSearchEngine: parsed.engine,
+					searchUrlTemplate: parsed.searchUrl,
+					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "BOOKMARK") {
 				return res.json({
-					text: `<div class="thought">Zen Bookmarks...</div><p>Η ιστοσελίδα <strong>${parsed.title}</strong> προστέθηκε επιτυχώς στους σελιδοδείκτες σου!</p>`, addTitle: parsed.title, addUrl: parsed.url, token: uiResponse.usageMetadata?.totalTokenCount || 0
+					text: `<div class="thought">Zen Bookmarks...</div><p>Η ιστοσελίδα <strong>${parsed.title}</strong> προστέθηκε επιτυχώς στους σελιδοδείκτες σου!</p>`,
+					function: "BOOKMARK",
+					data: JSON.stringify({
+						title: parsed.title, url: parsed.url
+					}),
+					addTitle: parsed.title,
+					addUrl: parsed.url,
+					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "REMOVE_BOOKMARK") {
 				return res.json({
-					text: `<div class="thought">Zen Bookmarks...</div><p>Ο σελιδοδείκτης <strong>${parsed.title}</strong> αφαιρέθηκε.</p>`, removeTitle: parsed.title, token: uiResponse.usageMetadata?.totalTokenCount || 0
+					text: `<div class="thought">Zen Bookmarks...</div><p>Ο σελιδοδείκτης <strong>${parsed.title}</strong> αφαιρέθηκε.</p>`,
+					function: "REMOVE_BOOKMARK",
+					data: parsed.title,
+					removeTitle: parsed.title,
+					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "SCALE") {
-				// Ασφαλής εξαγωγή του αριθμού. Αν δεν υπάρχει ή είναι NaN, παίρνει προεπιλογή (π.χ. 3)
 				let finalScale = parseInt(parsed.scale, 10);
-
 				if (isNaN(finalScale)) {
-					// Fallback σε περίπτωση που το parsed.scale ήταν ήδη αριθμός ή undefined
 					finalScale = typeof parsed.scale === 'number' ? parsed.scale: 0;
 				}
 
 				return res.json({
 					text: `<div class="thought">Zen UI Control...</div><p>Η κλίμακα της σελίδας ορίστηκε στο <strong>${finalScale}</strong>.</p>`,
+					function: "SCALE",
+					data: String(finalScale),
 					setScale: finalScale,
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			}
+		} else if (decision === "JAVASCRIPT") {
 
+			return res.json({
+				text: `<div class="thought">Zen Settings...</div><p>JavaScript settings are now <strong>${parsed.javaScript}</strong>.</p>`,
+				function: "JAVASCRIPT",
+				data: parsed.javaScript,
+				setJavaScript: parsed.javaScript,
+				token: uiResponse.usageMetadata?.totalTokenCount || 0
+			});
 
+		} else if (decision === "COOKIES") {
+
+			return res.json({
+				text: `<div class="thought">Zen Settings...</div><p>Cookies have being set to <strong>${parsed.cookies}</strong></p>`,
+				function: "COOKIES",
+				data: parsed.cookies,
+				setCookies: parsed.cookies,
+				token: uiResponse.usageMetadata?.totalTokenCount || 0
+			});
+
+		} else if (decision === "PASSWORDS") {
+
+			return res.json({
+				text: `<div class="thought">Zen Settings...</div><p>Password saving have being set to <strong>${parsed.password}</strong></p>`,
+				function: "PASSWORDS",
+				data: parsed.password,
+				setPassword: parsed.password,
+				token: uiResponse.usageMetadata?.totalTokenCount || 0
+			});
+
+		} else if (decision === "DEVELOPER_SETTINGS") {
+
+			return res.json({
+				text: `<div class="thought">Zen Settings...</div><p>Developer Mode have being set to <strong>${parsed.developer}</strong></p>`,
+				function: "DEVELOPER_SETTINGS",
+				data: parsed.developer,
+				setDeveloper: parsed.developer,
+				token: uiResponse.usageMetadata?.totalTokenCount || 0
+			});
+
+		} else if (decision === "VPN") {
+
+			return res.json({
+				text: `<div class="thought">Zen Settings...</div><p>VPN have being set to <strong>${parsed.vpn}</strong></p>`,
+				function: "VPN",
+				data: parsed.vpn,
+				setVPN: parsed.vpn,
+				token: uiResponse.usageMetadata?.totalTokenCount || 0
+			});
 
 		} else {
 			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
@@ -347,7 +466,6 @@ app.post('/api/chat', async (req, res) => {
 				});
 			}
 
-			// Επιβολή Timeout και στο Chat
 			const response = await withTimeout(chatPromise, GOOGLE_TIMEOUT_MS);
 
 			return res.json({
@@ -357,7 +475,6 @@ app.post('/api/chat', async (req, res) => {
 		}
 
 	} catch (globalError) {
-		// Καθολικό PaxSenix Fallback λόγω σφάλματος ή Timeout
 		console.warn("🚨 Ενεργοποίηση Καθολικού PaxSenix Fallback λόγω:", globalError.message);
 
 		try {
@@ -385,7 +502,6 @@ app.post('/api/chat', async (req, res) => {
 		}
 	}
 });
-
 
 // Endpoint PaxSenix
 app.post('/api/paxsenix-chat', async (req, res) => {
