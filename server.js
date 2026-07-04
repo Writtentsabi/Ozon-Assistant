@@ -310,7 +310,7 @@ app.post('/api/chat', async (req, res) => {
 			const uiResponse = await withTimeout(uiPromise, GOOGLE_TIMEOUT_MS);
 			const parsed = JSON.parse(uiResponse.text);
 
-			// Επιστροφή δεδομένων με πλήρη υποστήριξη για function και data
+			// --- ΟΛΑ ΤΑ CHECKS ΓΙΝΟΝΤΑΙ ΣΩΣΤΑ ΜΕΣΑ ΣΤΟ UI TASKS GROUP SCOPE ---
 			if (decision === "NAVIGATE") {
 				return res.json({
 					text: `<div class="thought">Zen Auto-Routing...</div><p>Μετάβαση στον σύνδεσμο: <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`,
@@ -339,7 +339,7 @@ app.post('/api/chat', async (req, res) => {
 					text: `<div class="thought">Zen UI Control...</div><p>Εκτέλεση ενέργειας toolbar: <strong>${greekAction}</strong>.</p>`,
 					function: "TOOLBAR",
 					data: parsed.action,
-					setToolbarPosition: parsed.action, // για συμβατότητα με παλιό κώδικα
+					setToolbarPosition: parsed.action,
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "SEARCH_ENGINE") {
@@ -383,56 +383,47 @@ app.post('/api/chat', async (req, res) => {
 					setScale: finalScale,
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
+			} else if (decision === "JAVASCRIPT") {
+				return res.json({
+					text: `<div class="thought">Zen Settings...</div><p>JavaScript settings are now <strong>${parsed.javaScript}</strong>.</p>`,
+					function: "JAVASCRIPT",
+					data: parsed.javaScript,
+					setJavaScript: parsed.javaScript,
+					token: uiResponse.usageMetadata?.totalTokenCount || 0
+				});
+			} else if (decision === "COOKIES") {
+				return res.json({
+					text: `<div class="thought">Zen Settings...</div><p>Cookies have been set to <strong>${parsed.cookies}</strong>.</p>`,
+					function: "COOKIES",
+					data: parsed.cookies,
+					setCookies: parsed.cookies,
+					token: uiResponse.usageMetadata?.totalTokenCount || 0
+				});
+			} else if (decision === "PASSWORDS") {
+				return res.json({
+					text: `<div class="thought">Zen Settings...</div><p>Password saving has been set to <strong>${parsed.passwords}</strong>.</p>`,
+					function: "PASSWORDS",
+					data: parsed.passwords,
+					setPassword: parsed.passwords,
+					token: uiResponse.usageMetadata?.totalTokenCount || 0
+				});
+			} else if (decision === "DEVELOPER_SETTINGS") {
+				return res.json({
+					text: `<div class="thought">Zen Settings...</div><p>Developer Mode has been set to <strong>${parsed.developer}</strong>.</p>`,
+					function: "DEVELOPER_SETTINGS",
+					data: parsed.developer,
+					setDeveloper: parsed.developer,
+					token: uiResponse.usageMetadata?.totalTokenCount || 0
+				});
+			} else if (decision === "VPN") {
+				return res.json({
+					text: `<div class="thought">Zen Settings...</div><p>VPN has been set to <strong>${parsed.vpn}</strong>.</p>`,
+					function: "VPN",
+					data: parsed.vpn,
+					setVPN: parsed.vpn,
+					token: uiResponse.usageMetadata?.totalTokenCount || 0
+				});
 			}
-		} else if (decision === "JAVASCRIPT") {
-
-			return res.json({
-				text: `<div class="thought">Zen Settings...</div><p>JavaScript settings are now <strong>${parsed.javaScript}</strong>.</p>`,
-				function: "JAVASCRIPT",
-				data: parsed.javaScript,
-				setJavaScript: parsed.javaScript,
-				token: uiResponse.usageMetadata?.totalTokenCount || 0
-			});
-
-		} else if (decision === "COOKIES") {
-
-			return res.json({
-				text: `<div class="thought">Zen Settings...</div><p>Cookies have being set to <strong>${parsed.cookies}</strong></p>`,
-				function: "COOKIES",
-				data: parsed.cookies,
-				setCookies: parsed.cookies,
-				token: uiResponse.usageMetadata?.totalTokenCount || 0
-			});
-
-		} else if (decision === "PASSWORDS") {
-
-			return res.json({
-				text: `<div class="thought">Zen Settings...</div><p>Password saving have being set to <strong>${parsed.password}</strong></p>`,
-				function: "PASSWORDS",
-				data: parsed.password,
-				setPassword: parsed.password,
-				token: uiResponse.usageMetadata?.totalTokenCount || 0
-			});
-
-		} else if (decision === "DEVELOPER_SETTINGS") {
-
-			return res.json({
-				text: `<div class="thought">Zen Settings...</div><p>Developer Mode have being set to <strong>${parsed.developer}</strong></p>`,
-				function: "DEVELOPER_SETTINGS",
-				data: parsed.developer,
-				setDeveloper: parsed.developer,
-				token: uiResponse.usageMetadata?.totalTokenCount || 0
-			});
-
-		} else if (decision === "VPN") {
-
-			return res.json({
-				text: `<div class="thought">Zen Settings...</div><p>VPN have being set to <strong>${parsed.vpn}</strong></p>`,
-				function: "VPN",
-				data: parsed.vpn,
-				setVPN: parsed.vpn,
-				token: uiResponse.usageMetadata?.totalTokenCount || 0
-			});
 
 		} else {
 			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
