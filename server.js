@@ -313,7 +313,7 @@ app.post('/api/chat', async (req, res) => {
 			// --- ΟΛΑ ΤΑ CHECKS ΓΙΝΟΝΤΑΙ ΣΩΣΤΑ ΜΕΣΑ ΣΤΟ UI TASKS GROUP SCOPE ---
 			if (decision === "NAVIGATE") {
 				return res.json({
-					text: `<div class="thought">Zen Auto-Routing...</div><p>Μετάβαση στον σύνδεσμο: <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`,
+					text: `<div class="thought">Zen Auto-Routing...</div><p>Routing to link:  <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`,
 					function: "NAVIGATE",
 					data: parsed.url,
 					openUrl: parsed.url,
@@ -321,22 +321,15 @@ app.post('/api/chat', async (req, res) => {
 				});
 			} else if (decision === "THEME") {
 				return res.json({
-					text: `<div class="thought">Zen UI Control...</div><p>Αλλαγή εμφάνισης σε <strong>${parsed.theme} mode</strong>.</p>`,
+					text: `<div class="thought">Zen Settings...</div><p>Theme has been set to <strong>${parsed.theme} mode</strong>.</p>`,
 					function: "THEME",
 					data: parsed.theme,
 					setTheme: parsed.theme,
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "TOOLBAR") {
-				let greekAction = parsed.action;
-				if (parsed.action === "top") greekAction = "κορυφή";
-				else if (parsed.action === "bottom") greekAction = "κάτω μέρος";
-				else if (parsed.action === "show") greekAction = "εμφάνιση";
-				else if (parsed.action === "hide") greekAction = "απόκρυψη";
-				else if (parsed.action === "toggle") greekAction = "εναλλαγή";
-
 				return res.json({
-					text: `<div class="thought">Zen UI Control...</div><p>Εκτέλεση ενέργειας toolbar: <strong>${greekAction}</strong>.</p>`,
+					text: `<div class="thought">Zen Settings...</div><p>Toolbar has been placed on <strong>${parsed.action}</strong>.</p>`,
 					function: "TOOLBAR",
 					data: parsed.action,
 					setToolbarPosition: parsed.action,
@@ -344,7 +337,7 @@ app.post('/api/chat', async (req, res) => {
 				});
 			} else if (decision === "SEARCH_ENGINE") {
 				return res.json({
-					text: `<div class="thought">Zen Engine Configuration...</div><p>Η προεπιλεγμένη αναζήτηση ορίστηκε μέσω <strong>${parsed.engine}</strong>.</p>`,
+					text: `<div class="thought">Zen Settings...</div><p>Default search engine has been set to <strong>${parsed.engine}</strong>.</p>`,
 					function: "SEARCH_ENGINE",
 					data: parsed.engine,
 					setSearchEngine: parsed.engine,
@@ -353,7 +346,7 @@ app.post('/api/chat', async (req, res) => {
 				});
 			} else if (decision === "BOOKMARK") {
 				return res.json({
-					text: `<div class="thought">Zen Bookmarks...</div><p>Η ιστοσελίδα <strong>${parsed.title}</strong> προστέθηκε επιτυχώς στους σελιδοδείκτες σου!</p>`,
+					text: `<div class="thought">Zen Bookmarks...</div><p>The website <strong>${parsed.title}</strong> was successfully added to your Bookmarks.</p>`,
 					function: "BOOKMARK",
 					data: JSON.stringify({
 						title: parsed.title, url: parsed.url
@@ -364,7 +357,7 @@ app.post('/api/chat', async (req, res) => {
 				});
 			} else if (decision === "REMOVE_BOOKMARK") {
 				return res.json({
-					text: `<div class="thought">Zen Bookmarks...</div><p>Ο σελιδοδείκτης <strong>${parsed.title}</strong> αφαιρέθηκε.</p>`,
+					text: `<div class="thought">Zen Bookmarks...</div><p>The Bookmark <strong>${parsed.title}</strong> has been removed.</p>`,
 					function: "REMOVE_BOOKMARK",
 					data: parsed.title,
 					removeTitle: parsed.title,
@@ -377,7 +370,7 @@ app.post('/api/chat', async (req, res) => {
 				}
 
 				return res.json({
-					text: `<div class="thought">Zen UI Control...</div><p>Η κλίμακα της σελίδας ορίστηκε στο <strong>${finalScale}</strong>.</p>`,
+					text: `<div class="thought">Zen Settings...</div><p>Scale has been set to <strong>${finalScale}</strong>.</p>`,
 					function: "SCALE",
 					data: String(finalScale),
 					setScale: finalScale,
@@ -466,7 +459,7 @@ app.post('/api/chat', async (req, res) => {
 		}
 
 	} catch (globalError) {
-		console.warn("🚨 Ενεργοποίηση Καθολικού PaxSenix Fallback λόγω:", globalError.message);
+		console.warn("🚨 Activated PaxSenix Fallback due to:", globalError.message);
 
 		try {
 			const paxResponse = await paxsenix.createChatCompletion({
