@@ -315,33 +315,37 @@ app.post('/api/chat', async (req, res) => {
 				return res.json({
 					text: `<div class="thought">Zen Auto-Routing...</div><p>Routing to link:  <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`,
 					function: "NAVIGATE",
-					data: parsed.url,
-					openUrl: parsed.url,
+					data: JSON.stringify({
+						openUrl: parsed.url
+					}),
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "THEME") {
 				return res.json({
 					text: `<div class="thought">Zen Settings...</div><p>Theme has been set to <strong>${parsed.theme} mode</strong>.</p>`,
 					function: "THEME",
-					data: parsed.theme,
-					setTheme: parsed.theme,
+					data: JSON.stringify({
+						setTheme: parsed.theme
+					}),
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "TOOLBAR") {
 				return res.json({
 					text: `<div class="thought">Zen Settings...</div><p>Toolbar has been placed on <strong>${parsed.action}</strong>.</p>`,
 					function: "TOOLBAR",
-					data: parsed.action,
-					setToolbarPosition: parsed.action,
+					data: JSON.stringify({
+						setToolbarPosition: parsed.action
+					}),
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "SEARCH_ENGINE") {
 				return res.json({
 					text: `<div class="thought">Zen Settings...</div><p>Default search engine has been set to <strong>${parsed.engine}</strong>.</p>`,
 					function: "SEARCH_ENGINE",
-					data: parsed.engine,
-					setSearchEngine: parsed.engine,
-					searchUrlTemplate: parsed.searchUrl,
+					data: JSON.stringify({
+						setSearchEngine: parsed.engine,
+						searchUrlTemplate: parsed.searchUrl
+					}),
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "BOOKMARK") {
@@ -351,16 +355,15 @@ app.post('/api/chat', async (req, res) => {
 					data: JSON.stringify({
 						title: parsed.title, url: parsed.url
 					}),
-					addTitle: parsed.title,
-					addUrl: parsed.url,
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "REMOVE_BOOKMARK") {
 				return res.json({
 					text: `<div class="thought">Zen Bookmarks...</div><p>The Bookmark <strong>${parsed.title}</strong> has been removed.</p>`,
 					function: "REMOVE_BOOKMARK",
-					data: parsed.title,
-					removeTitle: parsed.title,
+					data: JSON.stringify({
+						removeTitle: parsed.title
+					}),
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "SCALE") {
@@ -372,48 +375,53 @@ app.post('/api/chat', async (req, res) => {
 				return res.json({
 					text: `<div class="thought">Zen Settings...</div><p>Scale has been set to <strong>${finalScale}</strong>.</p>`,
 					function: "SCALE",
-					data: String(finalScale),
-					setScale: finalScale,
+					data: JSON.stringify({
+						setScale: String(finalScale)}),
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "JAVASCRIPT") {
 				return res.json({
 					text: `<div class="thought">Zen Settings...</div><p>JavaScript settings are now <strong>${parsed.javaScript}</strong>.</p>`,
 					function: "JAVASCRIPT",
-					data: parsed.javaScript,
-					setJavaScript: parsed.javaScript,
+					data: JSON.stringify({
+						setJavaScript: parsed.javaScript
+					}),
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "COOKIES") {
 				return res.json({
 					text: `<div class="thought">Zen Settings...</div><p>Cookies have been set to <strong>${parsed.cookies}</strong>.</p>`,
 					function: "COOKIES",
-					data: parsed.cookies,
-					setCookies: parsed.cookies,
+					data: JSON.stringify({
+						setCookies: parsed.cookies
+					}),
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "PASSWORDS") {
 				return res.json({
 					text: `<div class="thought">Zen Settings...</div><p>Password saving has been set to <strong>${parsed.passwords}</strong>.</p>`,
 					function: "PASSWORDS",
-					data: parsed.passwords,
-					setPassword: parsed.passwords,
+					data: JSON.stringify({
+						setPassword: parsed.passwords
+					}),
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "DEVELOPER_SETTINGS") {
 				return res.json({
 					text: `<div class="thought">Zen Settings...</div><p>Developer Mode has been set to <strong>${parsed.developer}</strong>.</p>`,
 					function: "DEVELOPER_SETTINGS",
-					data: parsed.developer,
-					setDeveloper: parsed.developer,
+					data: JSON.stringify({
+						setDeveloper: parsed.developer
+					}),
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "VPN") {
 				return res.json({
 					text: `<div class="thought">Zen Settings...</div><p>VPN has been set to <strong>${parsed.vpn}</strong>.</p>`,
 					function: "VPN",
-					data: parsed.vpn,
-					setVPN: parsed.vpn,
+					data: JSON.stringify({
+						setVPN: parsed.vpn
+					}),
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			}
