@@ -521,7 +521,7 @@ app.post('/api/paxsenix-chat', async (req, res) => {
 });
 
 //Endpoint for Quiz
-app.post('api/quiz', async (req, res) => {
+app.post('/api/quiz', async (req, res) => {
 
 	const {
 		prompt
