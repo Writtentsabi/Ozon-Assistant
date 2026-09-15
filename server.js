@@ -520,9 +520,8 @@ app.post('/api/paxsenix-chat', async (req, res) => {
 	}
 });
 
-Endpoint for Quiz
+// Endpoint for Quiz
 app.post('/api/quiz', async (req, res) => {
-
 	const {
 		prompt
 	} = req.body;
@@ -549,36 +548,44 @@ app.post('/api/quiz', async (req, res) => {
 				"answer2",
 				"answer3",
 				"answer4"]
-		},
+		}
 	};
 
-	const quizPrompt = `You are a quiz generator your purpose is to create a question with multiple posible answers (answer1, answer2, answer3, answer4) and select the correct from those one too (answer)`;
+	const quizPrompt = `You are a quiz generator. Your purpose is to create a question with multiple possible answers (answer1, answer2, answer3, answer4) and select the correct one (answer).`;
 
-	const uiPromise = ai.models.generateContent({
-		model: CHAT_MODEL,
-		contents: `Process request: "${prompt}"`,
-		config: {
-			systemInstruction: quizPrompt,
-			responseMimeType: "application/json",
-			responseSchema: {
-				type: Type.OBJECT,
-				properties: responseSchemaObj,
-				required: Object.keys(responseSchemaObj)
+	try {
+		const uiPromise = ai.models.generateContent({
+			model: CHAT_MODEL,
+			contents: `Process request: "${prompt}"`,
+			config: {
+				systemInstruction: quizPrompt,
+				responseMimeType: "application/json",
+				responseSchema: {
+					type: Type.OBJECT,
+					properties: responseSchemaObj,
+					required: Object.keys(responseSchemaObj)
+				}
 			}
-		}
-	});
+		});
 
-	const uiResponse = await withTimeout(uiPromise, GOOGLE_TIMEOUT_MS);
-	const parsed = JSON.parse(uiResponse.text)
+		const uiResponse = await withTimeout(uiPromise, GOOGLE_TIMEOUT_MS);
+		const parsed = JSON.parse(uiResponse.text);
 
-	res.json({
-		question: parsed.question,
-		answer1: parsed.answer1,
-		answer2: parsed.answer2,
-		answer3: parsed.answer3,
-		answer4: parsed.answer4,
-		answer: parsed.answer
-	});
+		return res.json({
+			question: parsed.question,
+			answer1: parsed.answer1,
+			answer2: parsed.answer2,
+			answer3: parsed.answer3,
+			answer4: parsed.answer4,
+			answer: parsed.answer
+		});
+	} catch (error) {
+		console.error("Quiz endpoint error:", error);
+		return res.status(500).json({
+			error: "Failed to generate quiz.",
+			details: error.message
+		});
+	}
 });
 
 // Endpoint Perchance
