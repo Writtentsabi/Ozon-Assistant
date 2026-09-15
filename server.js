@@ -551,14 +551,22 @@ app.post('/api/quiz', async (req, res) => {
 		}
 	};
 
-	const quizPrompt = `You are a quiz generator. Your purpose is to create a question with multiple possible answers (answer1, answer2, answer3, answer4) and select the correct one (answer).`;
+	// Δημιουργία τυχαίου αναγνωριστικού για να σπάει το caching/determinism
+	const randomSeed = Math.floor(Math.random() * 100000);
+
+	const quizPrompt = `You are a creative and diverse quiz generator.
+	Generate a COMPLETELY UNIQUE trivia question based on the topic provided.
+	Never repeat common or obvious questions.
+	Provide 4 distinct possible answers (answer1, answer2, answer3, answer4) and select the correct one (answer).
+	Random seed identifier: ${randomSeed}`;
 
 	try {
 		const uiPromise = ai.models.generateContent({
 			model: CHAT_MODEL,
-			contents: `Process request: "${prompt}"`,
+			contents: `Topic/Prompt: "${prompt}"`,
 			config: {
 				systemInstruction: quizPrompt,
+				temperature: 1.0, // Υψηλό temperature για ποικιλία στις απαντήσεις
 				responseMimeType: "application/json",
 				responseSchema: {
 					type: Type.OBJECT,
