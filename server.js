@@ -520,6 +520,67 @@ app.post('/api/paxsenix-chat', async (req, res) => {
 	}
 });
 
+//Endpoint for Quiz
+app.post('api/quiz', async (req, res) => {
+
+	const {
+		prompt
+	} = req.body;
+
+	responseSchemaObj = {
+		question: {
+			type: Type.STRING
+		},
+		answer1: {
+			type: Type.STRING
+		},
+		answer2: {
+			type: Type.STRING
+		},
+		answer3: {
+			type: Type.STRING
+		},
+		answer4: {
+			type: Type.STRING
+		},
+		answer1: {
+			type: Type.STRING,
+			enum: ["answer1",
+				"answer2",
+				"answer3",
+				"answer4"]
+		},
+	};
+
+	const quizPrompt = `You are a quiz generator your purpose is to create a question with multiple posible answers (answer1, answer2, answer3, answer4) and select the correct from those one too (answer)`;
+
+	const uiPromise = ai.models.generateContent({
+		model: CHAT_MODEL,
+		contents: `Process request: "${prompt}"`,
+		config: {
+			systemInstruction: quizPrompt,
+			responseMimeType: "application/json",
+			responseSchema: {
+				type: Type.OBJECT,
+				properties: responseSchemaObj,
+				required: Object.keys(responseSchemaObj)
+			}
+		}
+	});
+
+	const uiResponse = await withTimeout(uiPromise, GOOGLE_TIMEOUT_MS);
+	const parsed = JSON.parse(uiResponse.text)
+
+	res.json({
+		question: parsed.question,
+		answer1: parsed.answer1,
+		answer2: parsed.answer2,
+		answer3: parsed.answer3,
+		answer4: parsed.answer4,
+		answer: parsed.answer
+	});
+});
+
 // Endpoint Perchance
 app.post('/api/perchance', async (req, res) => {
 	const {
