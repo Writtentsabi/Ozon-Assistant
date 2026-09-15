@@ -520,14 +520,14 @@ app.post('/api/paxsenix-chat', async (req, res) => {
 	}
 });
 
-//Endpoint for Quiz
+Endpoint for Quiz
 app.post('/api/quiz', async (req, res) => {
 
 	const {
 		prompt
 	} = req.body;
 
-	responseSchemaObj = {
+	const responseSchemaObj = {
 		question: {
 			type: Type.STRING
 		},
@@ -543,7 +543,7 @@ app.post('/api/quiz', async (req, res) => {
 		answer4: {
 			type: Type.STRING
 		},
-		answer1: {
+		answer: {
 			type: Type.STRING,
 			enum: ["answer1",
 				"answer2",
