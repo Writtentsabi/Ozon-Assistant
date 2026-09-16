@@ -73,13 +73,18 @@ app.post('/api/chat', async (req, res) => {
 	try {
 		console.log("[Router] Starting intelligent routing...");
 
+		// Ασφαλές φιλτράρισμα του history
+		const safeHistory = Array.isArray(history)
+		? history.filter(item => item && item.role && item.parts): [];
+
 		// 1. Φάση Δρομολόγησης με επιβολή Timeout & Context
 		const routerPromise = ai.models.generateContent({
 			model: ROUTER_MODEL,
 			contents: [
-				...(history || []),
+				...safeHistory,
 				{
-					role: "user", parts: [{
+					role: "user",
+					parts: [{
 						text: `Analyze user intent: "${prompt}"`
 					}]
 				}],
@@ -134,7 +139,7 @@ app.post('/api/chat', async (req, res) => {
 
 			const contextChat = ai.chats.create({
 				model: CHAT_MODEL,
-				history: history || [],
+				history: safeHistory,
 				config: {
 					systemInstruction: `You are an expert prompt expander for an image generation model.
 					Analyze the conversation history and the user's latest request.
@@ -447,7 +452,7 @@ app.post('/api/chat', async (req, res) => {
 
 			const chat = ai.chats.create({
 				model: CHAT_MODEL,
-				history: history || [],
+				history: safeHistory,
 				config: {
 					systemInstruction: SYSTEM_INSTRUCTION,
 					tools: [{
@@ -509,6 +514,7 @@ app.post('/api/chat', async (req, res) => {
 		}
 	}
 });
+
 
 // Endpoint PaxSenix
 app.post('/api/paxsenix-chat', async (req, res) => {
