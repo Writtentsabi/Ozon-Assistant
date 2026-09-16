@@ -73,10 +73,16 @@ app.post('/api/chat', async (req, res) => {
 	try {
 		console.log("[Router] Starting intelligent routing...");
 
-		// 1. Φάση Δρομολόγησης με επιβολή Timeout
+		// 1. Φάση Δρομολόγησης με επιβολή Timeout & Context
 		const routerPromise = ai.models.generateContent({
 			model: ROUTER_MODEL,
-			contents: `Analyze the user input: "${prompt}". Categorize their intent.`,
+			contents: [
+				...(history || []),
+				{
+					role: "user", parts: [{
+						text: `Analyze user intent: "${prompt}"`
+					}]
+				}],
 			config: {
 				systemInstruction: `You are a routing assistant for a web browser. Categorize the user's intent into exactly one of these uppercase options:
 				- IMAGE (generate, draw, or create an image/visual)
@@ -108,9 +114,18 @@ app.post('/api/chat', async (req, res) => {
 			}
 		});
 
-		const routerResponse = await withTimeout(routerPromise, GOOGLE_TIMEOUT_MS);
-		const routerJson = JSON.parse(routerResponse.text);
-		const decision = routerJson.decision.trim().toUpperCase();
+		let decision = "TEXT";
+		try {
+			const routerResponse = await withTimeout(routerPromise, GOOGLE_TIMEOUT_MS);
+			const routerJson = JSON.parse(routerResponse.text);
+			if (routerJson && routerJson.decision) {
+				decision = routerJson.decision.trim().toUpperCase();
+			}
+		} catch (routerError) {
+			console.warn("[Router Warning] Routing timed out or failed. Defaulting to TEXT:", routerError.message);
+			decision = "TEXT";
+		}
+
 		console.log(`[Gemini Flash-Lite Router] Decision: ${decision}`);
 
 		// 2. Εκτέλεση βάσει της απόφασης
@@ -310,7 +325,6 @@ app.post('/api/chat', async (req, res) => {
 			const uiResponse = await withTimeout(uiPromise, GOOGLE_TIMEOUT_MS);
 			const parsed = JSON.parse(uiResponse.text);
 
-			// --- ΟΛΑ ΤΑ CHECKS ΓΙΝΟΝΤΑΙ ΣΩΣΤΑ ΜΕΣΑ ΣΤΟ UI TASKS GROUP SCOPE ---
 			if (decision === "NAVIGATE") {
 				return res.json({
 					text: `<div class="thought">Zen Auto-Routing...</div><p>Routing to link:  <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`,
@@ -376,7 +390,8 @@ app.post('/api/chat', async (req, res) => {
 					text: `<div class="thought">Zen Settings...</div><p>Scale has been set to <strong>${finalScale}</strong>.</p>`,
 					function: "SCALE",
 					data: JSON.stringify({
-						setScale: String(finalScale)}),
+						setScale: String(finalScale)
+					}),
 					token: uiResponse.usageMetadata?.totalTokenCount || 0
 				});
 			} else if (decision === "JAVASCRIPT") {
