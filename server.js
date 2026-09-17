@@ -56,7 +56,7 @@ app.post('/api/chat', async (req, res) => {
 
     // 1. Router Call
     const routerPromise = ai.models.generateContent({
-      model: ROUTER_MODEL,
+      model: CHAT_MODEL,
       contents: [
         ...safeHistory,
         { role: "user", parts: [{ text: `Analyze user intent: "${prompt}"` }] }
