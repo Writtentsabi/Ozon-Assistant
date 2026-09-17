@@ -30,6 +30,29 @@ CORE RULES:
 - FINAL RESPONSE in HTML (p, ul, strong, a).
 2. Do NOT wrap your entire response inside markdown code blocks. Return pure raw string.`;
 
+const ROUTER_SYSTEM_INSTRUCTION = `You are an intent classification routing assistant for the OxyZen Web Browser. 
+Analyze the user's latest request in the context of the conversation history and classify their intent into EXACTLY ONE of the following uppercase decisions:
+
+- IMAGE: Generate, draw, create, or modify an image or visual artwork.
+- NAVIGATE: Explicit command to open, visit, launch, or go to a specific URL/website (e.g., "go to youtube.com", "open wikipedia").
+- THEME: Explicit command to change or set the browser theme (dark, light, or system).
+- TOOLBAR: Explicit command to move or change toolbar placement or status (top, bottom, show, hide).
+- SEARCH_ENGINE: Explicit command to CHANGE OR SET the browser's default search engine setting (e.g., "change search engine to Google", "set default search to DuckDuckGo").
+- BOOKMARK: Explicit command to save/add the current page or a URL to bookmarks.
+- REMOVE_BOOKMARK: Explicit command to remove/delete a bookmark.
+- SCALE: Explicit command to change font size, UI scale, or zoom scale (0 to 5).
+- JAVASCRIPT: Explicit command to enable or disable JavaScript settings (true/false).
+- COOKIES: Explicit command to enable, disable, or toggle cookie settings (true/false).
+- PASSWORDS: Explicit command to enable or disable password saving settings (true/false).
+- DEVELOPER_SETTINGS: Explicit command to toggle developer mode / Eruda console (true/false).
+- VPN: Explicit command to change VPN protection mode (off, default, or family).
+- TEXT: ANY general question, factual inquiry, conversation, search query, or topic lookup (e.g., "Which countries have mandatory military service?", "Search for local weather", "Who founded Google?", "What is Java?").
+
+CRITICAL CLASSIFICATION RULES:
+1. Default to TEXT for all general queries, questions, information requests, or discussions, EVEN IF they mention search engines, websites, tech terms, or browser features.
+2. ONLY select a setting decision (SEARCH_ENGINE, THEME, JAVASCRIPT, etc.) if the user is explicitly ordering an ACTION to modify/change a browser configuration setting.
+3. Informational questions like "What is the best search engine?" or "Which countries have conscription?" MUST BE CLASSIFIED AS "TEXT".`;
+
 const GOOGLE_TIMEOUT_MS = 8000;
 
 const withTimeout = (promise, ms = GOOGLE_TIMEOUT_MS) => {
@@ -56,13 +79,13 @@ app.post('/api/chat', async (req, res) => {
 
     // 1. Router Call
     const routerPromise = ai.models.generateContent({
-      model: CHAT_MODEL,
+      model: ROUTER_MODEL,
       contents: [
         ...safeHistory,
         { role: "user", parts: [{ text: `Analyze user intent: "${prompt}"` }] }
       ],
       config: {
-        systemInstruction: `Categorize intent into exactly one option: IMAGE, NAVIGATE, THEME, TOOLBAR, SEARCH_ENGINE, BOOKMARK, REMOVE_BOOKMARK, SCALE, JAVASCRIPT, COOKIES, PASSWORDS, DEVELOPER_SETTINGS, VPN, TEXT`,
+        systemInstruction: ROUTER_SYSTEM_INSTRUCTION,
         responseMimeType: "application/json",
         responseSchema: buildSchema({
           decision: { type: Type.STRING, description: "Classification keyword." }
@@ -83,7 +106,7 @@ app.post('/api/chat', async (req, res) => {
     // 2. Image Generation Branch
     if (decision === "IMAGE") {
       const contextChat = ai.chats.create({
-        model: CHAT_MODEL,
+        model: ROUTER_MODEL,
         history: safeHistory,
         config: {
           systemInstruction: "Output a single detailed English prompt for image generation based on user input. Output ONLY prompt text."
