@@ -181,7 +181,7 @@ app.post('/api/chat', async (req, res) => {
 
       const reqKeys = Object.keys(props);
       const uiRes = await withTimeout(ai.models.generateContent({
-        model: ROUTER_MODEL,
+        model: CHAT_MODEL,
         contents: `Process request: "${prompt}"`,
         config: {
           systemInstruction: systemPrompt,
