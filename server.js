@@ -1,653 +1,302 @@
-// server.js (Πλήρως Βελτιωμένη Έκδοση με Gemini 2.5 Flash-Lite Router - Έτοιμο για Render)
 import 'dotenv/config';
 import express from 'express';
-import {
-	GoogleGenAI,
-	Type
-} from "@google/genai";
-import {
-	Buffer
-} from 'buffer';
+import { GoogleGenAI, Type } from "@google/genai";
 import PaxSenixAI from '@paxsenix/ai';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
-const ROUTER_MODEL = "gemini-2.5-flash-lite"; // Χρήση Flash-Lite για το Routing
+const ROUTER_MODEL = "gemini-2.5-flash-lite";
 
-const ai = new GoogleGenAI( {
-	apiKey: process.env.GEMINI_API_KEY
-});
-
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 
-// Ρυθμίσεις Ασφαλείας (Safety Settings)
-const safety = [{
-	category: "HARM_CATEGORY_HARASSMENT",
-	threshold: "BLOCK_ONLY_HIGH",
-},
-	{
-		category: "HARM_CATEGORY_HATE_SPEECH",
-		threshold: "BLOCK_ONLY_HIGH",
-	},
-	{
-		category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-		threshold: "BLOCK_ONLY_HIGH",
-	},
-	{
-		category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-		threshold: "BLOCK_ONLY_HIGH",
-	},
+const safety = [
+  { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
+  { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+  { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+  { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }
 ];
 
 app.use(express.static('public'));
-app.use(express.json({
-	limit: '50mb'
-}));
+app.use(express.json({ limit: '50mb' }));
 
-// System Instructions
 const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for the OxyZen Browser.
 
 CORE RULES:
 1. Every response MUST consist of two distinct sections:
 - <div class="thought">...your reasoning...</div>
 - FINAL RESPONSE in HTML (p, ul, strong, a).
-2. Do NOT wrap your entire response inside markdown code blocks like \`\`\`html. Return pure raw string.`;
+2. Do NOT wrap your entire response inside markdown code blocks. Return pure raw string.`;
 
-const GOOGLE_TIMEOUT_MS = 8000; // 8 δευτερόλεπτα όριο για την Google
+const GOOGLE_TIMEOUT_MS = 8000;
 
 const withTimeout = (promise, ms = GOOGLE_TIMEOUT_MS) => {
-	return Promise.race([
-		promise,
-		new Promise((_, reject) => setTimeout(() => reject(new Error(`Google API Node Timeout after ${ms}ms`)), ms))
-	]);
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout after ${ms}ms`)), ms))
+  ]);
 };
 
-// ΕΝΟΠΟΙΗΜΕΝΟ ENDPOINT: api/chat
+// Helper to wrap object property schemas correctly for SDK
+const buildSchema = (properties, requiredKeys = []) => ({
+  type: Type.OBJECT,
+  properties: properties,
+  required: requiredKeys
+});
+
 app.post('/api/chat', async (req, res) => {
-	const {
-		prompt, images, mimeType, history, aspectRatio
-	} = req.body;
+  const { prompt, images, mimeType, history, aspectRatio } = req.body;
 
-	try {
-		console.log("[Router] Starting intelligent routing...");
+  try {
+    const safeHistory = Array.isArray(history) 
+      ? history.filter(item => item && item.role && item.parts) 
+      : [];
 
-		// Ασφαλές φιλτράρισμα του history
-		const safeHistory = Array.isArray(history)
-		? history.filter(item => item && item.role && item.parts): [];
+    // 1. Router Call
+    const routerPromise = ai.models.generateContent({
+      model: ROUTER_MODEL,
+      contents: [
+        ...safeHistory,
+        { role: "user", parts: [{ text: `Analyze user intent: "${prompt}"` }] }
+      ],
+      config: {
+        systemInstruction: `Categorize intent into exactly one option: IMAGE, NAVIGATE, THEME, TOOLBAR, SEARCH_ENGINE, BOOKMARK, REMOVE_BOOKMARK, SCALE, JAVASCRIPT, COOKIES, PASSWORDS, DEVELOPER_SETTINGS, VPN, TEXT`,
+        responseMimeType: "application/json",
+        responseSchema: buildSchema({
+          decision: { type: Type.STRING, description: "Classification keyword." }
+        }, ["decision"]),
+        temperature: 0.0
+      }
+    });
 
-		// 1. Φάση Δρομολόγησης με επιβολή Timeout & Context
-		const routerPromise = ai.models.generateContent({
-			model: ROUTER_MODEL,
-			contents: [
-				...safeHistory,
-				{
-					role: "user",
-					parts: [{
-						text: `Analyze user intent: "${prompt}"`
-					}]
-				}],
-			config: {
-				systemInstruction: `You are a routing assistant for a web browser. Categorize the user's intent into exactly one of these uppercase options:
-				- IMAGE (generate, draw, or create an image/visual)
-				- NAVIGATE (open, launch, go to, or visit a specific website)
-				- THEME (change or set the theme to dark, light, or system)
-				- TOOLBAR (move or change toolbar position or status to top, bottom, show, hide, toggle)
-				- SEARCH_ENGINE (change or set the default search engine)
-				- BOOKMARK (add or save a website to bookmarks)
-				- REMOVE_BOOKMARK (remove or delete a website from bookmarks)
-				- SCALE (change, set, increase, or decrease font size, UI scale, or zoom scale to 0, 1, 2, 3, 4, or 5)
-				- JAVASCRIPT (change or set the JavaScript to true or false)
-				- COOKIES (change or set the cookies to true or false)
-				- PASSWORDS (change or set the password saving to true or false)
-				- DEVELOPER_SETTINGS (change or set the developer settings to true or false)
-				- VPN (change or set vpn settings to off, default or family)
-				- TEXT (general question, chat, or web search request)`,
-				responseMimeType: "application/json",
-				responseSchema: {
-					type: Type.OBJECT,
-					properties: {
-						decision: {
-							type: Type.STRING,
-							description: "The uppercase classification word."
-						}
-					},
-					required: ["decision"]
-				},
-				temperature: 0.0
-			}
-		});
+    let decision = "TEXT";
+    try {
+      const routerResponse = await withTimeout(routerPromise, GOOGLE_TIMEOUT_MS);
+      const routerJson = JSON.parse(routerResponse.text);
+      if (routerJson?.decision) decision = routerJson.decision.trim().toUpperCase();
+    } catch (e) {
+      decision = "TEXT";
+    }
 
-		let decision = "TEXT";
-		try {
-			const routerResponse = await withTimeout(routerPromise, GOOGLE_TIMEOUT_MS);
-			const routerJson = JSON.parse(routerResponse.text);
-			if (routerJson && routerJson.decision) {
-				decision = routerJson.decision.trim().toUpperCase();
-			}
-		} catch (routerError) {
-			console.warn("[Router Warning] Routing timed out or failed. Defaulting to TEXT:", routerError.message);
-			decision = "TEXT";
-		}
+    // 2. Image Generation Branch
+    if (decision === "IMAGE") {
+      const contextChat = ai.chats.create({
+        model: CHAT_MODEL,
+        history: safeHistory,
+        config: {
+          systemInstruction: "Output a single detailed English prompt for image generation based on user input. Output ONLY prompt text."
+        }
+      });
 
-		console.log(`[Gemini Flash-Lite Router] Decision: ${decision}`);
+      const synthRes = await withTimeout(contextChat.sendMessage({ message: prompt }), GOOGLE_TIMEOUT_MS);
+      const currentParts = [{ text: synthRes.text.trim() }];
 
-		// 2. Εκτέλεση βάσει της απόφασης
-		if (decision === "IMAGE") {
-			console.log("[Image Engine] Context-aware image generation triggered.");
+      if (Array.isArray(images)) {
+        images.forEach(imgBase64 => {
+          currentParts.push({ inlineData: { data: imgBase64, mimeType: mimeType || "image/jpeg" } });
+        });
+      }
 
-			const contextChat = ai.chats.create({
-				model: CHAT_MODEL,
-				history: safeHistory,
-				config: {
-					systemInstruction: `You are an expert prompt expander for an image generation model.
-					Analyze the conversation history and the user's latest request.
-					Your task is to output a single, highly-detailed image generation prompt in English that captures the user's full intent.
-					CRITICAL RULES: Output ONLY the final English prompt. No markdown.`
-				}
-			});
+      const imgRes = await withTimeout(ai.models.generateContent({
+        model: IMAGE_MODEL,
+        contents: [{ role: "user", parts: currentParts }],
+        config: {
+          responseModalities: ['IMAGE'],
+          safetySettings: safety,
+          imageConfig: { aspectRatio: aspectRatio || "1:1" }
+        }
+      }), 15000);
 
-			const promptSynthesisResponse = await withTimeout(contextChat.sendMessage({
-				message: prompt
-			}), GOOGLE_TIMEOUT_MS);
-			const synthesizedPrompt = promptSynthesisResponse.text.trim();
+      const parts = imgRes.candidates?.[0]?.content?.parts || [];
+      const generatedImages = parts.filter(p => p.inlineData).map(p => ({
+        data: p.inlineData.data,
+        mimeType: p.inlineData.mimeType
+      }));
 
-			console.log(`[Image Engine] Synthesized Prompt: "${synthesizedPrompt}"`);
+      return res.json({
+        success: true,
+        text: "Here is your requested image:",
+        images: generatedImages,
+        token: imgRes.usageMetadata?.totalTokenCount || 0
+      });
 
-			const currentParts = [{
-				text: synthesizedPrompt
-			}];
-			if (images && Array.isArray(images)) {
-				images.forEach(imgBase64 => {
-					currentParts.push({
-						inlineData: {
-							data: imgBase64, mimeType: mimeType || "image/jpeg"
-						}
-					});
-				});
-			}
+    // 3. UI Settings Branch
+    } else if (["NAVIGATE", "THEME", "TOOLBAR", "SEARCH_ENGINE", "BOOKMARK", "REMOVE_BOOKMARK", "SCALE", "JAVASCRIPT", "COOKIES", "PASSWORDS", "DEVELOPER_SETTINGS", "VPN"].includes(decision)) {
+      
+      let systemPrompt = "";
+      let props = {};
 
-			const imagePromise = ai.models.generateContent({
-				model: IMAGE_MODEL,
-				contents: [{
-					role: "user", parts: currentParts
-				}],
-				config: {
-					responseModalities: ['IMAGE'],
-					safetySettings: safety,
-					imageConfig: {
-						aspectRatio: aspectRatio || "1:1"
-					}
-				}
-			});
+      switch (decision) {
+        case "NAVIGATE":
+          systemPrompt = "Extract destination URL.";
+          props = { url: { type: Type.STRING } };
+          break;
+        case "THEME":
+          systemPrompt = "Identify theme mode (dark, light, or system).";
+          props = { theme: { type: Type.STRING, enum: ["dark", "light", "system"] } };
+          break;
+        case "TOOLBAR":
+          systemPrompt = "Identify toolbar placement (top, bottom).";
+          props = { action: { type: Type.STRING, enum: ["top", "bottom"] } };
+          break;
+        case "SEARCH_ENGINE":
+          systemPrompt = "Extract search engine name and search URL template using '%s'.";
+          props = { engine: { type: Type.STRING }, searchUrl: { type: Type.STRING } };
+          break;
+        case "BOOKMARK":
+          systemPrompt = "Extract title and URL for bookmark.";
+          props = { title: { type: Type.STRING }, url: { type: Type.STRING } };
+          break;
+        case "REMOVE_BOOKMARK":
+          systemPrompt = "Extract title of bookmark to remove.";
+          props = { title: { type: Type.STRING } };
+          break;
+        case "SCALE":
+          systemPrompt = "Extract integer scale between 0 and 5.";
+          props = { scale: { type: Type.INTEGER } };
+          break;
+        case "JAVASCRIPT":
+          systemPrompt = "Extract JavaScript enabled state (boolean).";
+          props = { javaScript: { type: Type.BOOLEAN } };
+          break;
+        case "COOKIES":
+          systemPrompt = "Extract cookies enabled state (boolean).";
+          props = { cookies: { type: Type.BOOLEAN } };
+          break;
+        case "PASSWORDS":
+          systemPrompt = "Extract password saving state (boolean).";
+          props = { passwords: { type: Type.BOOLEAN } };
+          break;
+        case "DEVELOPER_SETTINGS":
+          systemPrompt = "Extract developer mode state (boolean).";
+          props = { developer: { type: Type.BOOLEAN } };
+          break;
+        case "VPN":
+          systemPrompt = "Extract VPN mode (off, default, family).";
+          props = { vpn: { type: Type.STRING, enum: ["off", "default", "family"] } };
+          break;
+      }
 
-			const response = await withTimeout(imagePromise, 15000);
+      const reqKeys = Object.keys(props);
+      const uiRes = await withTimeout(ai.models.generateContent({
+        model: ROUTER_MODEL,
+        contents: `Process request: "${prompt}"`,
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: "application/json",
+          responseSchema: buildSchema(props, reqKeys)
+        }
+      }), GOOGLE_TIMEOUT_MS);
 
-			const candidate = response.candidates ? response.candidates[0]: null;
-			const parts = candidate?.content?.parts;
+      const parsed = JSON.parse(uiRes.text);
 
-			if (!parts || parts.length === 0) {
-				const reason = candidate?.finishReason || "UNKNOWN";
-				return res.status(500).json({
-					error: `Image generation failed. Reason: ${reason}`
-				});
-			}
+      const uiResponses = {
+        NAVIGATE: { text: `<div class="thought">Zen Auto-Routing...</div><p>Routing to link: <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`, function: "NAVIGATE", data: JSON.stringify({ openUrl: parsed.url }) },
+        THEME: { text: `<div class="thought">Zen Settings...</div><p>Theme set to <strong>${parsed.theme} mode</strong>.</p>`, function: "THEME", data: JSON.stringify({ setTheme: parsed.theme }) },
+        TOOLBAR: { text: `<div class="thought">Zen Settings...</div><p>Toolbar set to <strong>${parsed.action}</strong>.</p>`, function: "TOOLBAR", data: JSON.stringify({ setToolbarPosition: parsed.action }) },
+        SEARCH_ENGINE: { text: `<div class="thought">Zen Settings...</div><p>Default engine set to <strong>${parsed.engine}</strong>.</p>`, function: "SEARCH_ENGINE", data: JSON.stringify({ setSearchEngine: parsed.engine, searchUrlTemplate: parsed.searchUrl }) },
+        BOOKMARK: { text: `<div class="thought">Zen Bookmarks...</div><p>Added <strong>${parsed.title}</strong> to Bookmarks.</p>`, function: "BOOKMARK", data: JSON.stringify({ title: parsed.title, url: parsed.url }) },
+        REMOVE_BOOKMARK: { text: `<div class="thought">Zen Bookmarks...</div><p>Removed <strong>${parsed.title}</strong> from Bookmarks.</p>`, function: "REMOVE_BOOKMARK", data: JSON.stringify({ removeTitle: parsed.title }) },
+        SCALE: { text: `<div class="thought">Zen Settings...</div><p>Scale set to <strong>${parsed.scale}</strong>.</p>`, function: "SCALE", data: JSON.stringify({ setScale: String(parsed.scale) }) },
+        JAVASCRIPT: { text: `<div class="thought">Zen Settings...</div><p>JavaScript set to <strong>${parsed.javaScript}</strong>.</p>`, function: "JAVASCRIPT", data: JSON.stringify({ setJavaScript: parsed.javaScript }) },
+        COOKIES: { text: `<div class="thought">Zen Settings...</div><p>Cookies set to <strong>${parsed.cookies}</strong>.</p>`, function: "COOKIES", data: JSON.stringify({ setCookies: parsed.cookies }) },
+        PASSWORDS: { text: `<div class="thought">Zen Settings...</div><p>Password saving set to <strong>${parsed.passwords}</strong>.</p>`, function: "PASSWORDS", data: JSON.stringify({ setPassword: parsed.passwords }) },
+        DEVELOPER_SETTINGS: { text: `<div class="thought">Zen Settings...</div><p>Developer Mode set to <strong>${parsed.developer}</strong>.</p>`, function: "DEVELOPER_SETTINGS", data: JSON.stringify({ setDeveloper: parsed.developer }) },
+        VPN: { text: `<div class="thought">Zen Settings...</div><p>VPN set to <strong>${parsed.vpn}</strong>.</p>`, function: "VPN", data: JSON.stringify({ setVPN: parsed.vpn }) }
+      };
 
-			const generatedImages = parts
-			.filter(part => part.inlineData)
-			.map(part => ({
-				data: part.inlineData.data, mimeType: part.inlineData.mimeType
-			}));
+      return res.json({
+        ...uiResponses[decision],
+        token: uiRes.usageMetadata?.totalTokenCount || 0
+      });
 
-			return res.json({
-				success: true,
-				text: "Here is your requested image:",
-				images: generatedImages,
-				token: response.usageMetadata?.totalTokenCount || 0
-			});
+    // 4. Standard Chat & Search
+    } else {
+      const chat = ai.chats.create({
+        model: CHAT_MODEL,
+        history: safeHistory,
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION,
+          tools: [{ googleSearch: {} }],
+          safetySettings: safety,
+        },
+      });
 
-		} else if (["NAVIGATE", "THEME", "TOOLBAR", "SEARCH_ENGINE", "BOOKMARK", "REMOVE_BOOKMARK", "SCALE", "JAVASCRIPT", "COOKIES", "PASSWORDS", "DEVELOPER_SETTINGS", "VPN"].includes(decision)) {
+      let chatPromise;
+      if (!Array.isArray(images) || images.length === 0) {
+        chatPromise = chat.sendMessage({ message: prompt });
+      } else {
+        const imageParts = images.map(imgBase64 => ({
+          inlineData: { data: imgBase64, mimeType: mimeType || "image/jpeg" }
+        }));
+        chatPromise = chat.sendMessage({ message: [...imageParts, prompt] });
+      }
 
-			// --- UI TASKS GROUP ---
-			let systemPrompt = "";
-			let responseSchemaObj = {};
+      const response = await withTimeout(chatPromise, GOOGLE_TIMEOUT_MS);
+      return res.json({
+        text: response.text,
+        token: response.usageMetadata?.totalTokenCount || 0
+      });
+    }
 
-			if (decision === "NAVIGATE") {
-				systemPrompt = `Extract the destination URL. Respond ONLY with a valid JSON object. Example: {"url": "https://example.com"}.`;
-				responseSchemaObj = {
-					url: {
-						type: Type.STRING
-					}
-				};
-			} else if (decision === "THEME") {
-				systemPrompt = `Identify the target theme (dark, light, or system). Respond ONLY with JSON. Example: {"theme": "dark"}.`;
-				responseSchemaObj = {
-					theme: {
-						type: Type.STRING,
-						enum: ["dark",
-							"light",
-							"system"]
-					}
-				};
-			} else if (decision === "TOOLBAR") {
-				systemPrompt = `Identify the toolbar action or position (top, bottom). Respond ONLY with JSON. Example: {"action": "hide"}.`;
-				responseSchemaObj = {
-					action: {
-						type: Type.STRING,
-						enum: ["top",
-							"bottom"]
-					}
-				};
-			} else if (decision === "SEARCH_ENGINE") {
-				systemPrompt = `Identify the requested search engine name and create its standard search URL template using '%s' for the query.`;
-				responseSchemaObj = {
-					engine: {
-						type: Type.STRING
-					},
-					searchUrl: {
-						type: Type.STRING
-					}
-				};
-			} else if (decision === "BOOKMARK") {
-				systemPrompt = `Extract the title and full URL for a bookmark. Respond ONLY with JSON.`;
-				responseSchemaObj = {
-					title: {
-						type: Type.STRING
-					},
-					url: {
-						type: Type.STRING
-					}
-				};
-			} else if (decision === "REMOVE_BOOKMARK") {
-				systemPrompt = `Extract the title or keyword of the bookmark to remove. Respond ONLY with JSON.`;
-				responseSchemaObj = {
-					title: {
-						type: Type.STRING
-					}
-				};
-			} else if (decision === "SCALE") {
-				systemPrompt = `Identify the requested scale level. It MUST be an integer between 0 and 5 based on user input. If the user requests a value higher than 5, return 5. If they request lower than 0, return 0. Respond ONLY with JSON. Example: {"scale": 3}.`;
-				responseSchemaObj = {
-					scale: {
-						type: Type.INTEGER
-					}
-				};
-			} else if (decision === "JAVASCRIPT") {
-				systemPrompt = `Identify the JavaScript settings. It must be either true or false.`;
-				responseSchemaObj = {
-					javaScript: {
-						type: Type.BOOLEAN
-					}
-				};
-			} else if (decision === "COOKIES") {
-				systemPrompt = `Identify the cookies settings. It must be either true or false.`;
-				responseSchemaObj = {
-					cookies: {
-						type: Type.BOOLEAN
-					}
-				};
-			} else if (decision === "PASSWORDS") {
-				systemPrompt = `Identify the saving passwords settings. It must be either true or false.`;
-				responseSchemaObj = {
-					passwords: {
-						type: Type.BOOLEAN
-					}
-				};
-			} else if (decision === "DEVELOPER_SETTINGS") {
-				systemPrompt = `Identify the developer settings. It must be either true or false.`;
-				responseSchemaObj = {
-					developer: {
-						type: Type.BOOLEAN
-					}
-				};
-			} else if (decision === "VPN") {
-				systemPrompt = `Identify the vpn settings. It MUST be off, default or family.`;
-				responseSchemaObj = {
-					vpn: {
-						type: Type.STRING,
-						enum: ["off",
-							"default",
-							"family"]
-					}
-				};
-			}
+  } catch (globalError) {
+    try {
+      const paxResponse = await paxsenix.createChatCompletion({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: SYSTEM_INSTRUCTION },
+          { role: 'user', content: prompt }
+        ]
+      });
 
-			const uiPromise = ai.models.generateContent({
-				model: ROUTER_MODEL,
-				contents: `Process request: "${prompt}"`,
-				config: {
-					systemInstruction: systemPrompt,
-					responseMimeType: "application/json",
-					responseSchema: {
-						type: Type.OBJECT,
-						properties: responseSchemaObj,
-						required: Object.keys(responseSchemaObj)
-					}
-				}
-			});
-
-			const uiResponse = await withTimeout(uiPromise, GOOGLE_TIMEOUT_MS);
-			const parsed = JSON.parse(uiResponse.text);
-
-			if (decision === "NAVIGATE") {
-				return res.json({
-					text: `<div class="thought">Zen Auto-Routing...</div><p>Routing to link:  <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`,
-					function: "NAVIGATE",
-					data: JSON.stringify({
-						openUrl: parsed.url
-					}),
-					token: uiResponse.usageMetadata?.totalTokenCount || 0
-				});
-			} else if (decision === "THEME") {
-				return res.json({
-					text: `<div class="thought">Zen Settings...</div><p>Theme has been set to <strong>${parsed.theme} mode</strong>.</p>`,
-					function: "THEME",
-					data: JSON.stringify({
-						setTheme: parsed.theme
-					}),
-					token: uiResponse.usageMetadata?.totalTokenCount || 0
-				});
-			} else if (decision === "TOOLBAR") {
-				return res.json({
-					text: `<div class="thought">Zen Settings...</div><p>Toolbar has been placed on <strong>${parsed.action}</strong>.</p>`,
-					function: "TOOLBAR",
-					data: JSON.stringify({
-						setToolbarPosition: parsed.action
-					}),
-					token: uiResponse.usageMetadata?.totalTokenCount || 0
-				});
-			} else if (decision === "SEARCH_ENGINE") {
-				return res.json({
-					text: `<div class="thought">Zen Settings...</div><p>Default search engine has been set to <strong>${parsed.engine}</strong>.</p>`,
-					function: "SEARCH_ENGINE",
-					data: JSON.stringify({
-						setSearchEngine: parsed.engine,
-						searchUrlTemplate: parsed.searchUrl
-					}),
-					token: uiResponse.usageMetadata?.totalTokenCount || 0
-				});
-			} else if (decision === "BOOKMARK") {
-				return res.json({
-					text: `<div class="thought">Zen Bookmarks...</div><p>The website <strong>${parsed.title}</strong> was successfully added to your Bookmarks.</p>`,
-					function: "BOOKMARK",
-					data: JSON.stringify({
-						title: parsed.title, url: parsed.url
-					}),
-					token: uiResponse.usageMetadata?.totalTokenCount || 0
-				});
-			} else if (decision === "REMOVE_BOOKMARK") {
-				return res.json({
-					text: `<div class="thought">Zen Bookmarks...</div><p>The Bookmark <strong>${parsed.title}</strong> has been removed.</p>`,
-					function: "REMOVE_BOOKMARK",
-					data: JSON.stringify({
-						removeTitle: parsed.title
-					}),
-					token: uiResponse.usageMetadata?.totalTokenCount || 0
-				});
-			} else if (decision === "SCALE") {
-				let finalScale = parseInt(parsed.scale, 10);
-				if (isNaN(finalScale)) {
-					finalScale = typeof parsed.scale === 'number' ? parsed.scale: 0;
-				}
-
-				return res.json({
-					text: `<div class="thought">Zen Settings...</div><p>Scale has been set to <strong>${finalScale}</strong>.</p>`,
-					function: "SCALE",
-					data: JSON.stringify({
-						setScale: String(finalScale)
-					}),
-					token: uiResponse.usageMetadata?.totalTokenCount || 0
-				});
-			} else if (decision === "JAVASCRIPT") {
-				return res.json({
-					text: `<div class="thought">Zen Settings...</div><p>JavaScript settings are now <strong>${parsed.javaScript}</strong>.</p>`,
-					function: "JAVASCRIPT",
-					data: JSON.stringify({
-						setJavaScript: parsed.javaScript
-					}),
-					token: uiResponse.usageMetadata?.totalTokenCount || 0
-				});
-			} else if (decision === "COOKIES") {
-				return res.json({
-					text: `<div class="thought">Zen Settings...</div><p>Cookies have been set to <strong>${parsed.cookies}</strong>.</p>`,
-					function: "COOKIES",
-					data: JSON.stringify({
-						setCookies: parsed.cookies
-					}),
-					token: uiResponse.usageMetadata?.totalTokenCount || 0
-				});
-			} else if (decision === "PASSWORDS") {
-				return res.json({
-					text: `<div class="thought">Zen Settings...</div><p>Password saving has been set to <strong>${parsed.passwords}</strong>.</p>`,
-					function: "PASSWORDS",
-					data: JSON.stringify({
-						setPassword: parsed.passwords
-					}),
-					token: uiResponse.usageMetadata?.totalTokenCount || 0
-				});
-			} else if (decision === "DEVELOPER_SETTINGS") {
-				return res.json({
-					text: `<div class="thought">Zen Settings...</div><p>Developer Mode has been set to <strong>${parsed.developer}</strong>.</p>`,
-					function: "DEVELOPER_SETTINGS",
-					data: JSON.stringify({
-						setDeveloper: parsed.developer
-					}),
-					token: uiResponse.usageMetadata?.totalTokenCount || 0
-				});
-			} else if (decision === "VPN") {
-				return res.json({
-					text: `<div class="thought">Zen Settings...</div><p>VPN has been set to <strong>${parsed.vpn}</strong>.</p>`,
-					function: "VPN",
-					data: JSON.stringify({
-						setVPN: parsed.vpn
-					}),
-					token: uiResponse.usageMetadata?.totalTokenCount || 0
-				});
-			}
-
-		} else {
-			// --- ΛΟΓΙΚΗ ΑΠΛΗΣ ΣΥΝΟΜΙΛΙΑΣ & SEARCH ---
-			console.log("[Chat Engine] Standard chat or web search triggered.");
-
-			const chat = ai.chats.create({
-				model: CHAT_MODEL,
-				history: safeHistory,
-				config: {
-					systemInstruction: SYSTEM_INSTRUCTION,
-					tools: [{
-						googleSearch: {}
-					}],
-					safetySettings: safety,
-				},
-			});
-
-			let chatPromise;
-			if (!images || !Array.isArray(images)) {
-				chatPromise = chat.sendMessage({
-					message: prompt
-				});
-			} else {
-				const imageParts = images.map(imgBase64 => ({
-					inlineData: {
-						data: imgBase64, mimeType: mimeType || "image/jpeg"
-					}
-				}));
-				chatPromise = chat.sendMessage({
-					message: [...imageParts, prompt]
-				});
-			}
-
-			const response = await withTimeout(chatPromise, GOOGLE_TIMEOUT_MS);
-
-			return res.json({
-				text: response.text,
-				token: response.usageMetadata?.totalTokenCount || 0
-			});
-		}
-
-	} catch (globalError) {
-		console.warn("🚨 Activated PaxSenix Fallback due to:", globalError.message);
-
-		try {
-			const paxResponse = await paxsenix.createChatCompletion({
-				model: 'gpt-4o-mini',
-				messages: [{
-					role: 'system', content: SYSTEM_INSTRUCTION
-				},
-					{
-						role: 'user', content: prompt
-					}]
-			});
-
-			return res.json({
-				text: paxResponse.choices[0].message.content,
-				token: 0,
-				fallbackUsed: true
-			});
-
-		} catch (paxError) {
-			console.error("Fatal Error (Both Gemini and PaxSenix failed):", paxError);
-			return res.status(500).json({
-				error: "Όλες οι υπηρεσίες τεχνητής νοημοσύνης είναι προσωρινά μη διαθέσιμες."
-			});
-		}
-	}
+      return res.json({
+        text: paxResponse.choices[0].message.content,
+        token: 0,
+        fallbackUsed: true
+      });
+    } catch (paxError) {
+      return res.status(500).json({ error: "AI services unavailable." });
+    }
+  }
 });
 
-
-// Endpoint PaxSenix
-app.post('/api/paxsenix-chat', async (req, res) => {
-	const {
-		prompt
-	} = req.body;
-	try {
-		const response = await paxsenix.createChatCompletion({
-			model: 'gpt-3.5-turbo',
-			messages: [{
-				role: 'system', content: SYSTEM_INSTRUCTION
-			},
-				{
-					role: 'user', content: prompt
-				}]
-		});
-		res.json({
-			text: response.choices[0].message.content
-		});
-	} catch (error) {
-		res.status(500).json({
-			error: error.message
-		});
-	}
-});
-
-// Endpoint for Quiz
+// Quiz Endpoint
 app.post('/api/quiz', async (req, res) => {
-	const {
-		prompt
-	} = req.body;
+  const { prompt } = req.body;
+  const randomSeed = Math.floor(Math.random() * 100000);
 
-	const responseSchemaObj = {
-		question: {
-			type: Type.STRING
-		},
-		answer1: {
-			type: Type.STRING
-		},
-		answer2: {
-			type: Type.STRING
-		},
-		answer3: {
-			type: Type.STRING
-		},
-		answer4: {
-			type: Type.STRING
-		},
-		answer: {
-			type: Type.STRING,
-			enum: ["answer1",
-				"answer2",
-				"answer3",
-				"answer4"]
-		}
-	};
+  const quizProperties = {
+    question: { type: Type.STRING },
+    answer1: { type: Type.STRING },
+    answer2: { type: Type.STRING },
+    answer3: { type: Type.STRING },
+    answer4: { type: Type.STRING },
+    answer: { type: Type.STRING, enum: ["answer1", "answer2", "answer3", "answer4"] }
+  };
 
-	// Δημιουργία τυχαίου αναγνωριστικού για να σπάει το caching/determinism
-	const randomSeed = Math.floor(Math.random() * 100000);
+  try {
+    const uiPromise = ai.models.generateContent({
+      model: CHAT_MODEL,
+      contents: `Topic/Prompt: "${prompt}"`,
+      config: {
+        systemInstruction: `Generate a trivia question based on topic. Random seed: ${randomSeed}`,
+        temperature: 1.0,
+        responseMimeType: "application/json",
+        responseSchema: buildSchema(quizProperties, Object.keys(quizProperties))
+      }
+    });
 
-	const quizPrompt = `You are a creative and diverse quiz generator.
-	Generate a COMPLETELY UNIQUE trivia question based on the topic provided.
-	Never repeat common or obvious questions.
-	Provide 4 distinct possible answers (answer1, answer2, answer3, answer4) and select the correct one (answer).
-	Random seed identifier: ${randomSeed}`;
+    const uiResponse = await withTimeout(uiPromise, GOOGLE_TIMEOUT_MS);
+    const parsed = JSON.parse(uiResponse.text);
 
-	try {
-		const uiPromise = ai.models.generateContent({
-			model: CHAT_MODEL,
-			contents: `Topic/Prompt: "${prompt}"`,
-			config: {
-				systemInstruction: quizPrompt,
-				temperature: 1.0, // Υψηλό temperature για ποικιλία στις απαντήσεις
-				responseMimeType: "application/json",
-				responseSchema: {
-					type: Type.OBJECT,
-					properties: responseSchemaObj,
-					required: Object.keys(responseSchemaObj)
-				}
-			}
-		});
-
-		const uiResponse = await withTimeout(uiPromise, GOOGLE_TIMEOUT_MS);
-		const parsed = JSON.parse(uiResponse.text);
-
-		return res.json({
-			question: parsed.question,
-			answer1: parsed.answer1,
-			answer2: parsed.answer2,
-			answer3: parsed.answer3,
-			answer4: parsed.answer4,
-			answer: parsed.answer
-		});
-	} catch (error) {
-		console.error("Quiz endpoint error:", error);
-		return res.status(500).json({
-			error: "Failed to generate quiz.",
-			details: error.message
-		});
-	}
+    return res.json(parsed);
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to generate quiz.", details: error.message });
+  }
 });
 
-// Endpoint Perchance
-app.post('/api/perchance', async (req, res) => {
-	const {
-		prompt
-	} = req.body;
-	const count = 5;
-	try {
-		const response = await fetch(`https://perchance.org/api/generateList.php?generator=${prompt}&count=${count}`);
-		if (!response.ok) return res.status(response.status).json({
-			error: response.status
-		});
-		const data = await response.json();
-		res.json({
-			text: data
-		});
-	} catch (error) {
-		res.status(500).json({
-			error: "Error fetching from Perchance: " + error.message
-		});
-	}
-});
+app.get('/api/wakeup', (req, res) => res.status(200).json({ status: "online" }));
 
-// Endpoint για το "ξύπνημα" του server (Keep-alive / Health Check)
-app.get('/api/wakeup', (req, res) => {
-	res.status(200).json({
-		status: "online",
-		message: "Zen Server is awake and ready",
-		timestamp: new Date().toISOString()
-	});
-});
-
-app.listen(PORT, () => {
-	console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
