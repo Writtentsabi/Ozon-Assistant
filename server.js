@@ -71,8 +71,8 @@ CRITICAL CLASSIFICATION RULES:
 3. Informational questions like "What is the best search engine?" or "Which countries have conscription?" MUST BE CLASSIFIED AS "TEXT".`;
 
 // Διάφορα όρια Timeout ανάλογα με την απαιτητικότητα της λειτουργίας
-const GOOGLE_TIMEOUT_MS = 8000; // 8s για Router & UI Settings
-const CHAT_TIMEOUT_MS = 18000; // 18s για Web Search & Standard Chat
+const GOOGLE_TIMEOUT_MS = 10000; // 10s για Router & UI Settings
+const CHAT_TIMEOUT_MS = 20000; // 20s για Web Search & Standard Chat
 
 const withTimeout = (promise, ms = GOOGLE_TIMEOUT_MS) => {
 	return Promise.race([
