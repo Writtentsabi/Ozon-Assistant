@@ -181,6 +181,7 @@ async function sendChat(prompt, base64Image = null, fileName = null) {
 		outputLi.removeAttribute('id');
 		searchInput.value = "";
 		searchInput.disabled = false;
+		searchInput.classList.remove('shimmering');
 		askButton.disabled = false;
 		imageButton.disabled = false;
 		initialize();
@@ -195,6 +196,7 @@ askButton.addEventListener('click', () => {
 	if (!prompt) return;
 
 	searchInput.disabled = true;
+	searchInput.classList.add('shimmering');
 	askButton.disabled = true;
 	imageButton.disabled = true;
 
@@ -225,6 +227,7 @@ fileInput.addEventListener('change', async () => {
 	promptsContainer.appendChild(userLi);
 
 	searchInput.disabled = true;
+	searchInput.classList.add('shimmering');
 	askButton.disabled = true;
 	imageButton.disabled = true;
 
