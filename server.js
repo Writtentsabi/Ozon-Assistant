@@ -20,13 +20,17 @@ const ai = new GoogleGenAI( {
 });
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 
-let youtube;
+let youtubeInstance = null;
 
 async function getYouTubeInstance() {
-	if (!youtube) {
-		youtube = await Innertube.create();
+	if (!youtubeInstance) {
+		youtubeInstance = await Innertube.create({
+			lang: 'en',
+			location: 'US',
+			retrieve_player: false
+		});
 	}
-	return youtube;
+	return youtubeInstance;
 }
 
 async function fetchYouTubeTranscript(promptText) {
@@ -34,18 +38,39 @@ async function fetchYouTubeTranscript(promptText) {
 	const match = promptText.match(ytRegex);
 
 	if (match && match[1]) {
+		const videoId = match[1];
 		try {
 			const yt = await getYouTubeInstance();
-			const info = await yt.getInfo(match[1]);
+			const info = await yt.getInfo(videoId);
+
+			// Λήψη δεδομένων transcript
 			const transcriptData = await info.getTranscript();
 
-			if (transcriptData && transcriptData.transcript) {
-				const lines = transcriptData.transcript.content.body.initial_segments;
-				const fullText = lines.map(line => line.snippet.text).join(' ');
-				return fullText;
+			if (transcriptData && transcriptData.transcript && transcriptData.transcript.content) {
+				const body = transcriptData.transcript.content.body;
+				if (body && body.initial_segments) {
+					const fullText = body.initial_segments
+					.map(segment => {
+						if (segment.snippet && segment.snippet.text) {
+							return segment.snippet.text;
+						}
+						if (segment.snippet && segment.snippet.runs) {
+							return segment.snippet.runs.map(r => r.text).join('');
+						}
+						return '';
+					})
+					.filter(Boolean)
+					.join(' ');
+
+					if (fullText.trim().length > 0) {
+						return fullText;
+					}
+				}
 			}
 		} catch (e) {
-			console.log("Error at fetching subtitles:", e.message);
+			console.log("Error fetching subtitles for ID " + videoId + ":", e.message);
+			// Σε περίπτωση σφάλματος του instance, το μηδενίζουμε για να ξαναδημιουργηθεί στο επόμενο request
+			youtubeInstance = null;
 			return null;
 		}
 	}
