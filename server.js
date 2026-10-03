@@ -124,11 +124,14 @@ app.post('/api/chat', async (req, res) => {
 			}]
 		})): [];
 
-		// 0. Έλεγχος για YouTube Transcript ΠΡΙΝ από το Router
 		let finalPrompt = prompt;
 		const transcript = await fetchYouTubeTranscript(prompt);
+
 		if (transcript) {
-			finalPrompt = `Περιεχόμενο/Υπότιτλοι βίντεο YouTube:\n${transcript}\n\nΑίτημα χρήστη: ${prompt}`;
+			finalPrompt = `YouTube Video Subtitles/Transcript:\n${transcript}\n\nUser Request: ${prompt}`;
+		} else if (/(?:youtube\.com|youtu\.be)/.test(prompt)) {
+			// If a YouTube URL is present but no subtitles could be retrieved
+			finalPrompt = `${prompt}\n\n[SYSTEM NOTE: Could not fetch transcript/subtitles for this YouTube video. Inform the user that the video does not have accessible subtitles and therefore cannot be analyzed directly.]`;
 		}
 
 		// 1. Router Call
