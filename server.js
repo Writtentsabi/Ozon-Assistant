@@ -37,44 +37,53 @@ async function fetchYouTubeTranscript(promptText) {
 	const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
 	const match = promptText.match(ytRegex);
 
-	if (match && match[1]) {
-		const videoId = match[1];
-		try {
-			const yt = await getYouTubeInstance();
-			const info = await yt.getInfo(videoId);
+	if (!match || !match[1]) return null;
+	const videoId = match[1];
 
-			// Λήψη δεδομένων transcript
-			const transcriptData = await info.getTranscript();
-
-			if (transcriptData && transcriptData.transcript && transcriptData.transcript.content) {
-				const body = transcriptData.transcript.content.body;
-				if (body && body.initial_segments) {
-					const fullText = body.initial_segments
-					.map(segment => {
-						if (segment.snippet && segment.snippet.text) {
-							return segment.snippet.text;
-						}
-						if (segment.snippet && segment.snippet.runs) {
-							return segment.snippet.runs.map(r => r.text).join('');
-						}
-						return '';
-					})
-					.filter(Boolean)
-					.join(' ');
-
-					if (fullText.trim().length > 0) {
-						return fullText;
-					}
-				}
+	try {
+		// 1. Fetch video page metadata
+		const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+			headers: {
+				'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+				'Accept-Language': 'en-US,en;q=0.9'
 			}
-		} catch (e) {
-			console.log("Error fetching subtitles for ID " + videoId + ":", e.message);
-			// Σε περίπτωση σφάλματος του instance, το μηδενίζουμε για να ξαναδημιουργηθεί στο επόμενο request
-			youtubeInstance = null;
-			return null;
-		}
+		});
+		const html = await response.text();
+
+		// 2. Extract captionTracks from ytInitialPlayerResponse
+		const splitted = html.split('ytInitialPlayerResponse = ');
+		if (splitted.length < 2) return null;
+		
+		const jsonStr = splitted[1].split(';</script>')[0];
+		const playerResponse = JSON.parse(jsonStr);
+
+		const captionTracks = playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+		if (!captionTracks || captionTracks.length === 0) return null;
+
+		// 3. Find English or default track
+		const track = captionTracks.find(t => t.languageCode === 'en') || captionTracks[0];
+		if (!track || !track.baseUrl) return null;
+
+		// 4. Fetch the XML transcript content
+		const xmlResponse = await fetch(track.baseUrl);
+		const xmlText = await xmlResponse.text();
+
+		// 5. Clean XML tags to raw text
+		const cleanText = xmlText
+			.replace(/<text[^>]*>/g, '')
+			.replace(/<\/text>/g, ' ')
+			.replace(/&amp;/g, '&')
+			.replace(/&#39;/g, "'")
+			.replace(/&quot;/g, '"')
+			.replace(/<[^>]+>/g, '')
+			.replace(/\s+/g, ' ')
+			.trim();
+
+		return cleanText.length > 0 ? cleanText : null;
+	} catch (e) {
+		console.log("Error fetching transcript via raw fetch:", e.message);
+		return null;
 	}
-	return null;
 }
 
 const safety = [{
