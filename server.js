@@ -6,8 +6,8 @@ import {
 } from "@google/genai";
 import PaxSenixAI from '@paxsenix/ai';
 import {
-	YoutubeTranscript
-} from 'youtube-transcript';
+	Innertube
+} from 'youtubei.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,16 +20,32 @@ const ai = new GoogleGenAI( {
 });
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 
+let youtube;
+
+async function getYouTubeInstance() {
+	if (!youtube) {
+		youtube = await Innertube.create();
+	}
+	return youtube;
+}
+
 async function fetchYouTubeTranscript(promptText) {
 	const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
 	const match = promptText.match(ytRegex);
 
 	if (match && match[1]) {
 		try {
-			const transcriptItems = await YoutubeTranscript.fetchTranscript(match[1]);
-			return transcriptItems.map(item => item.text).join(' ');
+			const yt = await getYouTubeInstance();
+			const info = await yt.getInfo(match[1]);
+			const transcriptData = await info.getTranscript();
+
+			if (transcriptData && transcriptData.transcript) {
+				const lines = transcriptData.transcript.content.body.initial_segments;
+				const fullText = lines.map(line => line.snippet.text).join(' ');
+				return fullText;
+			}
 		} catch (e) {
-			console.log("Δεν βρέθηκαν υπότιτλοι για το συγκεκριμένο βίντεο:", e.message);
+			console.log("Error at fetching subtitles:", e.message);
 			return null;
 		}
 	}
