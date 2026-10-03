@@ -124,6 +124,13 @@ app.post('/api/chat', async (req, res) => {
 			}]
 		})): [];
 
+		// 0. Έλεγχος για YouTube Transcript ΠΡΙΝ από το Router
+		let finalPrompt = prompt;
+		const transcript = await fetchYouTubeTranscript(prompt);
+		if (transcript) {
+			finalPrompt = `Περιεχόμενο/Υπότιτλοι βίντεο YouTube:\n${transcript}\n\nΑίτημα χρήστη: ${prompt}`;
+		}
+
 		// 1. Router Call
 		const routerPromise = ai.models.generateContent({
 			model: ROUTER_MODEL,
@@ -152,6 +159,11 @@ app.post('/api/chat', async (req, res) => {
 			const routerJson = JSON.parse(routerResponse.text);
 			if (routerJson?.decision) decision = routerJson.decision.trim().toUpperCase();
 		} catch (e) {
+			decision = "TEXT";
+		}
+
+		// Αν βρέθηκε transcript, εξαναγκάζουμε την απόφαση σε TEXT για να επεξεργαστεί το περιεχόμενο
+		if (transcript) {
 			decision = "TEXT";
 		}
 
@@ -447,17 +459,10 @@ app.post('/api/chat', async (req, res) => {
 		},
 		});
 
-	// Έλεγχος για YouTube Transcript
-	let finalPrompt = prompt;
-	const transcript = await fetchYouTubeTranscript(prompt);
-	if (transcript) {
-		finalPrompt = `Περιεχόμενο/Υπότιτλοι βίντεο YouTube:\n${transcript}\n\nΑίτημα χρήστη: ${prompt}`;
-	}
-
 	let chatPromise;
 	if (!Array.isArray(images) || images.length === 0) {
 		chatPromise = chat.sendMessage({
-			message: finalPrompt // <--- Χρησιμοποιείς το finalPrompt
+			message: finalPrompt
 		});
 	} else {
 		const imageParts = images.map(imgBase64 => ({
@@ -466,7 +471,7 @@ app.post('/api/chat', async (req, res) => {
 			}
 	}));
 	chatPromise = chat.sendMessage({
-		message: [...imageParts, finalPrompt] // <--- Χρησιμοποιείς το finalPrompt
+		message: [...imageParts, finalPrompt]
 	});
 }
 
@@ -476,7 +481,6 @@ app.post('/api/chat', async (req, res) => {
 		token: response.usageMetadata?.totalTokenCount || 0
 	});
 }
-
 
 } catch (globalError) {
 try {
@@ -502,6 +506,7 @@ try {
 }
 }
 });
+
 
 // Quiz Endpoint
 app.post('/api/quiz', async (req, res) => {
