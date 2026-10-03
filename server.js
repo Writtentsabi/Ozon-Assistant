@@ -5,6 +5,9 @@ import {
 	Type
 } from "@google/genai";
 import PaxSenixAI from '@paxsenix/ai';
+import {
+	YoutubeTranscript
+} from 'youtube-transcript';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,6 +19,22 @@ const ai = new GoogleGenAI( {
 	apiKey: process.env.GEMINI_API_KEY
 });
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
+
+async function fetchYouTubeTranscript(promptText) {
+	const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+	const match = promptText.match(ytRegex);
+
+	if (match && match[1]) {
+		try {
+			const transcriptItems = await YoutubeTranscript.fetchTranscript(match[1]);
+			return transcriptItems.map(item => item.text).join(' ');
+		} catch (e) {
+			console.log("Δεν βρέθηκαν υπότιτλοι για το συγκεκριμένο βίντεο:", e.message);
+			return null;
+		}
+	}
+	return null;
+}
 
 const safety = [{
 	category: "HARM_CATEGORY_HARASSMENT",
@@ -414,7 +433,7 @@ app.post('/api/chat', async (req, res) => {
 			token: uiRes.usageMetadata?.totalTokenCount || 0
 		});
 
-		// 4. Standard Chat & Search (Χρήση αυξημένου CHAT_TIMEOUT_MS)
+		// 4. Standard Chat & Search
 	} else {
 		const chat = ai.chats.create({
 			model: CHAT_MODEL,
@@ -428,10 +447,17 @@ app.post('/api/chat', async (req, res) => {
 		},
 		});
 
+	// Έλεγχος για YouTube Transcript
+	let finalPrompt = prompt;
+	const transcript = await fetchYouTubeTranscript(prompt);
+	if (transcript) {
+		finalPrompt = `Περιεχόμενο/Υπότιτλοι βίντεο YouTube:\n${transcript}\n\nΑίτημα χρήστη: ${prompt}`;
+	}
+
 	let chatPromise;
 	if (!Array.isArray(images) || images.length === 0) {
 		chatPromise = chat.sendMessage({
-			message: prompt
+			message: finalPrompt // <--- Χρησιμοποιείς το finalPrompt
 		});
 	} else {
 		const imageParts = images.map(imgBase64 => ({
@@ -440,17 +466,17 @@ app.post('/api/chat', async (req, res) => {
 			}
 	}));
 	chatPromise = chat.sendMessage({
-		message: [...imageParts, prompt]
+		message: [...imageParts, finalPrompt] // <--- Χρησιμοποιείς το finalPrompt
 	});
 }
 
-	// Εδώ εφαρμόζεται το CHAT_TIMEOUT_MS (18 δευτερόλεπτα)
 	const response = await withTimeout(chatPromise, CHAT_TIMEOUT_MS);
 	return res.json({
 		text: response.text,
 		token: response.usageMetadata?.totalTokenCount || 0
 	});
 }
+
 
 } catch (globalError) {
 try {
