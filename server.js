@@ -41,50 +41,63 @@ async function fetchYouTubeTranscript(promptText) {
 	const videoId = match[1];
 
 	try {
-		// 1. Fetch video page metadata
-		const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+		// Καλούμε το API χρησιμοποιώντας το TVHTML5 client payload
+		const response = await fetch('https://www.youtube.com/youtubei/v1/player', {
+			method: 'POST',
 			headers: {
-				'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-				'Accept-Language': 'en-US,en;q=0.9'
-			}
+				'Content-Type': 'application/json',
+				'User-Agent': 'Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV) AppleWebKit/538.1+ (KHTML, like Gecko) TV Safari/538.1+'
+			},
+			body: JSON.stringify({
+				context: {
+					client: {
+						clientName: 'TVHTML5',
+						clientVersion: '7.20230405.08.01',
+						hl: 'en',
+						gl: 'US'
+					}
+				},
+				videoId: videoId
+			})
 		});
-		const html = await response.text();
 
-		// 2. Extract captionTracks from ytInitialPlayerResponse
-		const splitted = html.split('ytInitialPlayerResponse = ');
-		if (splitted.length < 2) return null;
-		
-		const jsonStr = splitted[1].split(';</script>')[0];
-		const playerResponse = JSON.parse(jsonStr);
+		const data = await response.json();
 
-		const captionTracks = playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+		// Έλεγχος αν το βίντεο είναι διαθέσιμο
+		if (data?.playabilityStatus?.status !== 'OK') {
+			console.log("Video status not OK:", data?.playabilityStatus?.reason);
+			return null;
+		}
+
+		const captionTracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
 		if (!captionTracks || captionTracks.length === 0) return null;
 
-		// 3. Find English or default track
+		// Επιλογή αγγλικού track ή του πρώτου διαθέσιμου
 		const track = captionTracks.find(t => t.languageCode === 'en') || captionTracks[0];
 		if (!track || !track.baseUrl) return null;
 
-		// 4. Fetch the XML transcript content
+		// Λήψη του XML αρχείου υποτίτλων
 		const xmlResponse = await fetch(track.baseUrl);
 		const xmlText = await xmlResponse.text();
 
-		// 5. Clean XML tags to raw text
+		// Καθαρισμός XML tags
 		const cleanText = xmlText
-			.replace(/<text[^>]*>/g, '')
-			.replace(/<\/text>/g, ' ')
-			.replace(/&amp;/g, '&')
-			.replace(/&#39;/g, "'")
-			.replace(/&quot;/g, '"')
-			.replace(/<[^>]+>/g, '')
-			.replace(/\s+/g, ' ')
-			.trim();
+		.replace(/<text[^>]*>/g, '')
+		.replace(/<\/text>/g, ' ')
+		.replace(/&amp;/g, '&')
+		.replace(/&#39;/g, "'")
+		.replace(/&quot;/g, '"')
+		.replace(/<[^>]+>/g, '')
+		.replace(/\s+/g, ' ')
+		.trim();
 
-		return cleanText.length > 0 ? cleanText : null;
+		return cleanText.length > 0 ? cleanText: null;
 	} catch (e) {
-		console.log("Error fetching transcript via raw fetch:", e.message);
+		console.log("Error fetching transcript via TVHTML5 API:", e.message);
 		return null;
 	}
 }
+
 
 const safety = [{
 	category: "HARM_CATEGORY_HARASSMENT",
