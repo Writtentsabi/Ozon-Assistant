@@ -5,9 +5,6 @@ import path from 'path';
 import os from 'os';
 import {
 	YoutubeTranscript
-} from 'youtube-transcript';
-import {
-	YoutubeTranscript
 } from 'youtube-transcript-scraper';
 import {
 	GoogleGenAI,
