@@ -5,7 +5,7 @@ import path from 'path';
 import os from 'os';
 import {
 	YoutubeTranscript
-} from 'youtube-transcript-scraper';
+} from 'youtube-transcript';
 import {
 	GoogleGenAI,
 	Type
@@ -34,10 +34,23 @@ async function processYouTubeVideo(promptText) {
 	try {
 		console.log("Fetching YouTube transcript for video:", videoId);
 
-		// Προσθήκη επιλογών γλωσσών ώστε αν δεν βρει χειροκίνητους, να πάρει τους αυτόματους
-		const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, {
-			lang: ['en', 'el', 'a.en', 'a.el'] // Δοκιμάζει αγγλικά, ελληνικά και τα αντίστοιχα auto-generated
-		});
+		let transcriptItems;
+		try {
+			// Δοκιμή 1: Ελληνικά
+			transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, {
+				lang: 'el'
+			});
+		} catch (e1) {
+			try {
+				// Δοκιμή 2: Αγγλικά
+				transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, {
+					lang: 'en'
+				});
+			} catch (e2) {
+				// Δοκιμή 3: Προεπιλεγμένη γλώσσα του βίντεο
+				transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
+			}
+		}
 
 		if (!transcriptItems || transcriptItems.length === 0) return null;
 
