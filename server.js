@@ -1,5 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import ytdl from '@distube/ytdl-core';
 import {
 	GoogleGenAI,
 	Type
@@ -8,7 +12,6 @@ import PaxSenixAI from '@paxsenix/ai';
 import {
 	Innertube
 } from 'youtubei.js';
-import { YoutubeTranscript } from 'youtube-transcript';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,7 +19,7 @@ const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
 const ROUTER_MODEL = "gemini-2.5-flash-lite";
 
-const ai = new GoogleGenAI( {
+const ai = new GoogleGenAI({
 	apiKey: process.env.GEMINI_API_KEY
 });
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
@@ -34,37 +37,66 @@ async function getYouTubeInstance() {
 	return youtubeInstance;
 }
 
-async function fetchYouTubeTranscript(promptText) {
+// Επεξεργασία YouTube βίντεο μέσω @distube/ytdl-core & Gemini Files API
+async function processYouTubeVideo(promptText, aiInstance) {
 	const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
 	const match = promptText.match(ytRegex);
 
 	if (!match || !match[1]) return null;
 	const videoId = match[1];
+	const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+	const tempPath = path.join(os.tmpdir(), `yt_${videoId}_${Date.now()}.mp4`);
 
 	try {
-		// Λήψη υπότιτλων απευθείας από τη βιβλιοθήκη
-		const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, {
-			lang: 'el' // Προσπαθεί πρώτα για ελληνικά, αλλιώς πέφτει σε fallback
-		}).catch(() => YoutubeTranscript.fetchTranscript(videoId)); // Fallback αν δεν βρει 'el'
+		console.log("Downloading YouTube video via ytdl-core:", videoUrl);
 
-		if (!transcriptItems || transcriptItems.length === 0) return null;
+		// Stream κατεβάσματος βίντεο σε χαμηλή ποιότητα για ταχύτητα
+		await new Promise((resolve, reject) => {
+			const stream = ytdl(videoUrl, {
+				quality: 'lowest',
+				filter: format => format.container === 'mp4' && format.hasVideo && format.hasAudio
+			});
 
-		// Ένωση των κειμένων σε ένα ενιαίο string
-		const fullText = transcriptItems.map(item => item.text).join(' ');
-		
-		// Καθαρισμός HTML entities
-		const cleanText = fullText
-			.replace(/&amp;/g, '&')
-			.replace(/&#39;/g, "'")
-			.replace(/&quot;/g, '"')
-			.replace(/&lt;/g, '<')
-			.replace(/&gt;/g, '>')
-			.replace(/\s+/g, ' ')
-			.trim();
+			const fileStream = fs.createWriteStream(tempPath);
+			stream.pipe(fileStream);
 
-		return cleanText.length > 0 ? cleanText : null;
+			fileStream.on('finish', resolve);
+			fileStream.on('error', reject);
+			stream.on('error', reject);
+		});
+
+		if (!fs.existsSync(tempPath)) return null;
+
+		console.log("Uploading video to Gemini Files API...");
+		// 1. Upload στο Gemini Files API
+		const uploadResult = await aiInstance.files.upload({
+			file: tempPath,
+			mimeType: 'video/mp4',
+		});
+
+		// 2. Αναμονή μέχρι να ολοκληρωθεί η επεξεργασία των frames (ACTIVE)
+		let fileState = await aiInstance.files.get({ name: uploadResult.name });
+		while (fileState.state === "PROCESSING") {
+			await new Promise((resolve) => setTimeout(resolve, 2000));
+			fileState = await aiInstance.files.get({ name: uploadResult.name });
+		}
+
+		// Διαγραφή τοπικού προσωρινού αρχείου
+		if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+
+		if (fileState.state === "ACTIVE") {
+			return {
+				fileData: {
+					mimeType: uploadResult.mimeType,
+					fileUri: uploadResult.uri,
+				}
+			};
+		}
+
+		return null;
 	} catch (e) {
-		console.log("Error fetching transcript via YoutubeTranscript:", e.message);
+		console.log("Error processing YouTube video via ytdl-core:", e.message);
+		if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
 		return null;
 	}
 }
@@ -73,18 +105,18 @@ const safety = [{
 	category: "HARM_CATEGORY_HARASSMENT",
 	threshold: "BLOCK_ONLY_HIGH"
 },
-	{
-		category: "HARM_CATEGORY_HATE_SPEECH",
-		threshold: "BLOCK_ONLY_HIGH"
-	},
-	{
-		category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-		threshold: "BLOCK_ONLY_HIGH"
-	},
-	{
-		category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-		threshold: "BLOCK_ONLY_HIGH"
-	}];
+{
+	category: "HARM_CATEGORY_HATE_SPEECH",
+	threshold: "BLOCK_ONLY_HIGH"
+},
+{
+	category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+	threshold: "BLOCK_ONLY_HIGH"
+},
+{
+	category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+	threshold: "BLOCK_ONLY_HIGH"
+}];
 
 app.use(express.static('public'));
 app.use(express.json({
@@ -122,9 +154,9 @@ CRITICAL CLASSIFICATION RULES:
 2. ONLY select a setting decision (SEARCH_ENGINE, THEME, JAVASCRIPT, etc.) if the user is explicitly ordering an ACTION to modify/change a browser configuration setting.
 3. Informational questions like "What is the best search engine?" or "Which countries have conscription?" MUST BE CLASSIFIED AS "TEXT".`;
 
-// Διάφορα όρια Timeout ανάλογα με την απαιτητικότητα της λειτουργίας
+// Ορία Timeout
 const GOOGLE_TIMEOUT_MS = 10000; // 10s για Router & UI Settings
-const CHAT_TIMEOUT_MS = 20000; // 20s για Web Search & Standard Chat
+const CHAT_TIMEOUT_MS = 45000;   // 45s για Web Search & Video Analysis
 
 const withTimeout = (promise, ms = GOOGLE_TIMEOUT_MS) => {
 	return Promise.race([
@@ -157,15 +189,8 @@ app.post('/api/chat', async (req, res) => {
 			}]
 		})): [];
 
-		let finalPrompt = prompt;
-		const transcript = await fetchYouTubeTranscript(prompt);
-
-		if (transcript) {
-			finalPrompt = `YouTube Video Subtitles/Transcript:\n${transcript}\n\nUser Request: ${prompt}`;
-		} else if (/(?:youtube\.com|youtu\.be)/.test(prompt)) {
-			// If a YouTube URL is present but no subtitles could be retrieved
-			finalPrompt = `${prompt}\n\n[SYSTEM NOTE: Could not fetch transcript/subtitles for this YouTube video. Inform the user that the video does not have accessible subtitles and therefore cannot be analyzed directly.]`;
-		}
+		// Επεξεργασία τυχόν YouTube link στο prompt μέσω ytdl-core & Files API
+		const videoFileRef = await processYouTubeVideo(prompt, ai);
 
 		// 1. Router Call
 		const routerPromise = ai.models.generateContent({
@@ -180,7 +205,7 @@ app.post('/api/chat', async (req, res) => {
 			config: {
 				systemInstruction: ROUTER_SYSTEM_INSTRUCTION,
 				responseMimeType: "application/json",
-				responseSchema: buildSchema( {
+				responseSchema: buildSchema({
 					decision: {
 						type: Type.STRING, description: "Classification keyword."
 					}
@@ -198,8 +223,8 @@ app.post('/api/chat', async (req, res) => {
 			decision = "TEXT";
 		}
 
-		// Αν βρέθηκε transcript, εξαναγκάζουμε την απόφαση σε TEXT για να επεξεργαστεί το περιεχόμενο
-		if (transcript) {
+		// Αν βρέθηκε βίντεο, εξαναγκάζουμε την απόφαση σε TEXT για ανάλυση περιεχομένου
+		if (videoFileRef) {
 			decision = "TEXT";
 		}
 
@@ -257,7 +282,7 @@ app.post('/api/chat', async (req, res) => {
 				token: imgRes.usageMetadata?.totalTokenCount || 0
 			});
 
-			// 3. UI Settings Branch
+		// 3. UI Settings Branch
 		} else if (["NAVIGATE", "THEME", "TOOLBAR", "SEARCH_ENGINE", "BOOKMARK", "REMOVE_BOOKMARK", "SCALE", "JAVASCRIPT", "COOKIES", "PASSWORDS", "DEVELOPER_SETTINGS", "VPN"].includes(decision)) {
 
 			let systemPrompt = "";
@@ -266,113 +291,51 @@ app.post('/api/chat', async (req, res) => {
 			switch (decision) {
 				case "NAVIGATE":
 					systemPrompt = "Extract destination URL.";
-					props = {
-						url: {
-							type: Type.STRING
-						}
-					};
+					props = { url: { type: Type.STRING } };
 					break;
 				case "THEME":
 					systemPrompt = "Identify theme mode (dark, light, or system).";
-					props = {
-						theme: {
-							type: Type.STRING,
-							enum: ["dark",
-								"light",
-								"system"]
-						}
-					};
+					props = { theme: { type: Type.STRING, enum: ["dark", "light", "system"] } };
 					break;
 				case "TOOLBAR":
 					systemPrompt = "Identify toolbar placement (top, bottom).";
-					props = {
-						action: {
-							type: Type.STRING,
-							enum: ["top",
-								"bottom"]
-						}
-					};
+					props = { action: { type: Type.STRING, enum: ["top", "bottom"] } };
 					break;
 				case "SEARCH_ENGINE":
 					systemPrompt = "Extract search engine name and search URL template using '%s'.";
-					props = {
-						engine: {
-							type: Type.STRING
-						},
-						searchUrl: {
-							type: Type.STRING
-						}
-					};
+					props = { engine: { type: Type.STRING }, searchUrl: { type: Type.STRING } };
 					break;
 				case "BOOKMARK":
 					systemPrompt = "Extract title and URL for bookmark.";
-					props = {
-						title: {
-							type: Type.STRING
-						},
-						url: {
-							type: Type.STRING
-						}
-					};
+					props = { title: { type: Type.STRING }, url: { type: Type.STRING } };
 					break;
 				case "REMOVE_BOOKMARK":
 					systemPrompt = "Extract title of bookmark to remove.";
-					props = {
-						title: {
-							type: Type.STRING
-						}
-					};
+					props = { title: { type: Type.STRING } };
 					break;
 				case "SCALE":
 					systemPrompt = "Extract integer scale between 0 and 5.";
-					props = {
-						scale: {
-							type: Type.INTEGER
-						}
-					};
+					props = { scale: { type: Type.INTEGER } };
 					break;
 				case "JAVASCRIPT":
 					systemPrompt = "Extract JavaScript enabled state (boolean).";
-					props = {
-						javaScript: {
-							type: Type.BOOLEAN
-						}
-					};
+					props = { javaScript: { type: Type.BOOLEAN } };
 					break;
 				case "COOKIES":
 					systemPrompt = "Extract cookies enabled state (boolean).";
-					props = {
-						cookies: {
-							type: Type.BOOLEAN
-						}
-					};
+					props = { cookies: { type: Type.BOOLEAN } };
 					break;
 				case "PASSWORDS":
 					systemPrompt = "Extract password saving state (boolean).";
-					props = {
-						passwords: {
-							type: Type.BOOLEAN
-						}
-					};
+					props = { passwords: { type: Type.BOOLEAN } };
 					break;
 				case "DEVELOPER_SETTINGS":
 					systemPrompt = "Extract developer mode state (boolean).";
-					props = {
-						developer: {
-							type: Type.BOOLEAN
-						}
-					};
+					props = { developer: { type: Type.BOOLEAN } };
 					break;
 				case "VPN":
 					systemPrompt = "Extract VPN mode (off, default, family).";
-					props = {
-						vpn: {
-							type: Type.STRING,
-							enum: ["off",
-								"default",
-								"family"]
-						}
-					};
+					props = { vpn: { type: Type.STRING, enum: ["off", "default", "family"] } };
 					break;
 			}
 
@@ -393,214 +356,181 @@ app.post('/api/chat', async (req, res) => {
 				NAVIGATE: {
 					text: `<div class="thought">Zen Auto-Routing...</div><p>Routing to link: <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`,
 					function: "NAVIGATE",
-					data: JSON.stringify({
-						openUrl: parsed.url
-					})
-			},
-			THEME: {
-				text: `<div class="thought">Zen Settings...</div><p>Theme set to <strong>${parsed.theme} mode</strong>.</p>`,
-				function: "THEME",
-				data: JSON.stringify({
-					setTheme: parsed.theme
-				})
-			},
-			TOOLBAR: {
-				text: `<div class="thought">Zen Settings...</div><p>Toolbar set to <strong>${parsed.action}</strong>.</p>`,
-				function: "TOOLBAR",
-				data: JSON.stringify({
-					setToolbarPosition: parsed.action
-				})
-			},
-			SEARCH_ENGINE: {
-				text: `<div class="thought">Zen Settings...</div><p>Default engine set to <strong>${parsed.engine}</strong>.</p>`,
-				function: "SEARCH_ENGINE",
-				data: JSON.stringify({
-					setSearchEngine: parsed.engine, searchUrlTemplate: parsed.searchUrl
-				})
-			},
-			BOOKMARK: {
-				text: `<div class="thought">Zen Bookmarks...</div><p>Added <strong>${parsed.title}</strong> to Bookmarks.</p>`,
-				function: "BOOKMARK",
-				data: JSON.stringify({
-					title: parsed.title, url: parsed.url
-				})
-			},
-			REMOVE_BOOKMARK: {
-				text: `<div class="thought">Zen Bookmarks...</div><p>Removed <strong>${parsed.title}</strong> from Bookmarks.</p>`,
-				function: "REMOVE_BOOKMARK",
-				data: JSON.stringify({
-					removeTitle: parsed.title
-				})
-			},
-			SCALE: {
-				text: `<div class="thought">Zen Settings...</div><p>Scale set to <strong>${parsed.scale}</strong>.</p>`,
-				function: "SCALE",
-				data: JSON.stringify({
-					setScale: String(parsed.scale)
-				})
-			},
-			JAVASCRIPT: {
-				text: `<div class="thought">Zen Settings...</div><p>JavaScript set to <strong>${parsed.javaScript}</strong>.</p>`,
-				function: "JAVASCRIPT",
-				data: JSON.stringify({
-					setJavaScript: parsed.javaScript
-				})
-			},
-			COOKIES: {
-				text: `<div class="thought">Zen Settings...</div><p>Cookies set to <strong>${parsed.cookies}</strong>.</p>`,
-				function: "COOKIES",
-				data: JSON.stringify({
-					setCookies: parsed.cookies
-				})
-			},
-			PASSWORDS: {
-				text: `<div class="thought">Zen Settings...</div><p>Password saving set to <strong>${parsed.passwords}</strong>.</p>`,
-				function: "PASSWORDS",
-				data: JSON.stringify({
-					setPassword: parsed.passwords
-				})
-			},
-			DEVELOPER_SETTINGS: {
-				text: `<div class="thought">Zen Settings...</div><p>Developer Mode set to <strong>${parsed.developer}</strong>.</p>`,
-				function: "DEVELOPER_SETTINGS",
-				data: JSON.stringify({
-					setDeveloper: parsed.developer
-				})
-			},
-			VPN: {
-				text: `<div class="thought">Zen Settings...</div><p>VPN set to <strong>${parsed.vpn}</strong>.</p>`,
-				function: "VPN",
-				data: JSON.stringify({
-					setVPN: parsed.vpn
-				})
+					data: JSON.stringify({ openUrl: parsed.url })
+				},
+				THEME: {
+					text: `<div class="thought">Zen Settings...</div><p>Theme set to <strong>${parsed.theme} mode</strong>.</p>`,
+					function: "THEME",
+					data: JSON.stringify({ setTheme: parsed.theme })
+				},
+				TOOLBAR: {
+					text: `<div class="thought">Zen Settings...</div><p>Toolbar set to <strong>${parsed.action}</strong>.</p>`,
+					function: "TOOLBAR",
+					data: JSON.stringify({ setToolbarPosition: parsed.action })
+				},
+				SEARCH_ENGINE: {
+					text: `<div class="thought">Zen Settings...</div><p>Default engine set to <strong>${parsed.engine}</strong>.</p>`,
+					function: "SEARCH_ENGINE",
+					data: JSON.stringify({ setSearchEngine: parsed.engine, searchUrlTemplate: parsed.searchUrl })
+				},
+				BOOKMARK: {
+					text: `<div class="thought">Zen Bookmarks...</div><p>Added <strong>${parsed.title}</strong> to Bookmarks.</p>`,
+					function: "BOOKMARK",
+					data: JSON.stringify({ title: parsed.title, url: parsed.url })
+				},
+				REMOVE_BOOKMARK: {
+					text: `<div class="thought">Zen Bookmarks...</div><p>Removed <strong>${parsed.title}</strong> from Bookmarks.</p>`,
+					function: "REMOVE_BOOKMARK",
+					data: JSON.stringify({ removeTitle: parsed.title })
+				},
+				SCALE: {
+					text: `<div class="thought">Zen Settings...</div><p>Scale set to <strong>${parsed.scale}</strong>.</p>`,
+					function: "SCALE",
+					data: JSON.stringify({ setScale: String(parsed.scale) })
+				},
+				JAVASCRIPT: {
+					text: `<div class="thought">Zen Settings...</div><p>JavaScript set to <strong>${parsed.javaScript}</strong>.</p>`,
+					function: "JAVASCRIPT",
+					data: JSON.stringify({ setJavaScript: parsed.javaScript })
+				},
+				COOKIES: {
+					text: `<div class="thought">Zen Settings...</div><p>Cookies set to <strong>${parsed.cookies}</strong>.</p>`,
+					function: "COOKIES",
+					data: JSON.stringify({ setCookies: parsed.cookies })
+				},
+				PASSWORDS: {
+					text: `<div class="thought">Zen Settings...</div><p>Password saving set to <strong>${parsed.passwords}</strong>.</p>`,
+					function: "PASSWORDS",
+					data: JSON.stringify({ setPassword: parsed.passwords })
+				},
+				DEVELOPER_SETTINGS: {
+					text: `<div class="thought">Zen Settings...</div><p>Developer Mode set to <strong>${parsed.developer}</strong>.</p>`,
+					function: "DEVELOPER_SETTINGS",
+					data: JSON.stringify({ setDeveloper: parsed.developer })
+				},
+				VPN: {
+					text: `<div class="thought">Zen Settings...</div><p>VPN set to <strong>${parsed.vpn}</strong>.</p>`,
+					function: "VPN",
+					data: JSON.stringify({ setVPN: parsed.vpn })
+				}
+			};
+
+			return res.json({
+				...uiResponses[decision],
+				token: uiRes.usageMetadata?.totalTokenCount || 0
+			});
+
+		// 4. Standard Chat, Search & Video Processing
+		} else {
+			const chat = ai.chats.create({
+				model: CHAT_MODEL,
+				history: safeHistory,
+				config: {
+					systemInstruction: SYSTEM_INSTRUCTION,
+					tools: [{ googleSearch: {} }],
+					safetySettings: safety,
+				},
+			});
+
+			const messageParts = [];
+
+			// Προσθήκη βίντεο αν ανακτήθηκε από το YouTube
+			if (videoFileRef) {
+				messageParts.push(videoFileRef);
 			}
-		};
 
-		return res.json({
-			...uiResponses[decision],
-			token: uiRes.usageMetadata?.totalTokenCount || 0
-		});
-
-		// 4. Standard Chat & Search
-	} else {
-		const chat = ai.chats.create({
-			model: CHAT_MODEL,
-			history: safeHistory,
-			config: {
-				systemInstruction: SYSTEM_INSTRUCTION,
-				tools: [{
-					googleSearch: {}
-				}],
-				safetySettings: safety,
-		},
-		});
-
-	let chatPromise;
-	if (!Array.isArray(images) || images.length === 0) {
-		chatPromise = chat.sendMessage({
-			message: finalPrompt
-		});
-	} else {
-		const imageParts = images.map(imgBase64 => ({
-			inlineData: {
-				data: imgBase64, mimeType: mimeType || "image/jpeg"
+			// Προσθήκη εικόνων αν υπάρχουν στο request
+			if (Array.isArray(images) && images.length > 0) {
+				images.forEach(imgBase64 => {
+					messageParts.push({
+						inlineData: {
+							data: imgBase64,
+							mimeType: mimeType || "image/jpeg"
+						}
+					});
+				});
 			}
-	}));
-	chatPromise = chat.sendMessage({
-		message: [...imageParts, finalPrompt]
-	});
-}
 
-	const response = await withTimeout(chatPromise, CHAT_TIMEOUT_MS);
-	return res.json({
-		text: response.text,
-		token: response.usageMetadata?.totalTokenCount || 0
-	});
-}
+			messageParts.push(prompt);
 
-} catch (globalError) {
-try {
-	const paxResponse = await paxsenix.createChatCompletion({
-		model: 'gpt-4o-mini',
-		messages: [{
-			role: 'system', content: SYSTEM_INSTRUCTION
-		},
-			{
-				role: 'user', content: prompt
-			}]
-	});
+			const chatPromise = chat.sendMessage({
+				message: messageParts
+			});
 
-	return res.json({
-		text: paxResponse.choices[0].message.content,
-		token: 0,
-		fallbackUsed: true
-	});
-} catch (paxError) {
-	return res.status(500).json({
-		error: "AI services unavailable."
-	});
-}
-}
+			const response = await withTimeout(chatPromise, CHAT_TIMEOUT_MS);
+			return res.json({
+				text: response.text,
+				token: response.usageMetadata?.totalTokenCount || 0
+			});
+		}
+
+	} catch (globalError) {
+		try {
+			const paxResponse = await paxsenix.createChatCompletion({
+				model: 'gpt-4o-mini',
+				messages: [{
+					role: 'system', content: SYSTEM_INSTRUCTION
+				},
+				{
+					role: 'user', content: prompt
+				}]
+			});
+
+			return res.json({
+				text: paxResponse.choices[0].message.content,
+				token: 0,
+				fallbackUsed: true
+			});
+		} catch (paxError) {
+			return res.status(500).json({
+				error: "AI services unavailable."
+			});
+		}
+	}
 });
-
 
 // Quiz Endpoint
 app.post('/api/quiz', async (req, res) => {
-const {
-prompt
-} = req.body;
-const randomSeed = Math.floor(Math.random() * 100000);
+	const { prompt } = req.body;
+	const randomSeed = Math.floor(Math.random() * 100000);
 
-const quizProperties = {
-question: {
-type: Type.STRING
-},
-answer1: {
-type: Type.STRING
-},
-answer2: {
-type: Type.STRING
-},
-answer3: {
-type: Type.STRING
-},
-answer4: {
-type: Type.STRING
-},
-answer: {
-type: Type.STRING,
-enum: ["answer1",
-"answer2",
-"answer3",
-"answer4"]
-}
-};
+	const quizProperties = {
+		question: { type: Type.STRING },
+		answer1: { type: Type.STRING },
+		answer2: { type: Type.STRING },
+		answer3: { type: Type.STRING },
+		answer4: { type: Type.STRING },
+		answer: {
+			type: Type.STRING,
+			enum: ["answer1", "answer2", "answer3", "answer4"]
+		}
+	};
 
-try {
-const uiPromise = ai.models.generateContent({
-model: CHAT_MODEL,
-contents: `Topic/Prompt: "${prompt}"`,
-config: {
-systemInstruction: `Generate a trivia question based on topic. Random seed: ${randomSeed}`,
-temperature: 1.0,
-responseMimeType: "application/json",
-responseSchema: buildSchema(quizProperties, Object.keys(quizProperties))
-}
-});
+	try {
+		const uiPromise = ai.models.generateContent({
+			model: CHAT_MODEL,
+			contents: `Topic/Prompt: "${prompt}"`,
+			config: {
+				systemInstruction: `Generate a trivia question based on topic. Random seed: ${randomSeed}`,
+				temperature: 1.0,
+				responseMimeType: "application/json",
+				responseSchema: buildSchema(quizProperties, Object.keys(quizProperties))
+			}
+		});
 
-const uiResponse = await withTimeout(uiPromise, GOOGLE_TIMEOUT_MS);
-const parsed = JSON.parse(uiResponse.text);
+		const uiResponse = await withTimeout(uiPromise, GOOGLE_TIMEOUT_MS);
+		const parsed = JSON.parse(uiResponse.text);
 
-return res.json(parsed);
-} catch (error) {
-return res.status(500).json({
-error: "Failed to generate quiz.", details: error.message
-});
-}
+		return res.json(parsed);
+	} catch (error) {
+		return res.status(500).json({
+			error: "Failed to generate quiz.", details: error.message
+		});
+	}
 });
 
 app.get('/api/wakeup', (req, res) => res.status(200).json({
-status: "online"
+	status: "online"
 }));
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
