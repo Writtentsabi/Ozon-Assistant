@@ -8,6 +8,7 @@ import PaxSenixAI from '@paxsenix/ai';
 import {
 	Innertube
 } from 'youtubei.js';
+import { YoutubeTranscript } from 'youtube-transcript';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -41,65 +42,29 @@ async function fetchYouTubeTranscript(promptText) {
 	const videoId = match[1];
 
 	try {
-		// Καλούμε το YouTube InnerTube API με Android Client
-		const response = await fetch('https://www.youtube.com/youtubei/v1/player', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'User-Agent': 'com.google.android.youtube/19.29.1 (Linux; U; Android 11)'
-			},
-			body: JSON.stringify({
-				context: {
-					client: {
-						clientName: 'ANDROID',
-						clientVersion: '19.29.1',
-						hl: 'el', // Προτίμηση Ελληνικών αν υπάρχουν
-						gl: 'GR'
-					}
-				},
-				videoId: videoId
-			})
-		});
+		// Λήψη υπότιτλων απευθείας από τη βιβλιοθήκη
+		const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, {
+			lang: 'el' // Προσπαθεί πρώτα για ελληνικά, αλλιώς πέφτει σε fallback
+		}).catch(() => YoutubeTranscript.fetchTranscript(videoId)); // Fallback αν δεν βρει 'el'
 
-		const data = await response.json();
+		if (!transcriptItems || transcriptItems.length === 0) return null;
 
-		if (data?.playabilityStatus?.status !== 'OK') {
-			console.log("Video status not OK:", data?.playabilityStatus?.reason);
-			return null;
-		}
+		// Ένωση των κειμένων σε ένα ενιαίο string
+		const fullText = transcriptItems.map(item => item.text).join(' ');
+		
+		// Καθαρισμός HTML entities
+		const cleanText = fullText
+			.replace(/&amp;/g, '&')
+			.replace(/&#39;/g, "'")
+			.replace(/&quot;/g, '"')
+			.replace(/&lt;/g, '<')
+			.replace(/&gt;/g, '>')
+			.replace(/\s+/g, ' ')
+			.trim();
 
-		// Ανάκτηση των tracks υποτίτλων
-		const captionTracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-		if (!captionTracks || captionTracks.length === 0) {
-			console.log("No caption tracks found for video:", videoId);
-			return null;
-		}
-
-		// Ιεράρχηση επιλογής: 1. Ελληνικά, 2. Αγγλικά, 3. Το πρώτο διαθέσιμο
-		const track = captionTracks.find(t => t.languageCode === 'el') || captionTracks.find(t => t.languageCode === 'en') || captionTracks[0];
-
-		if (!track || !track.baseUrl) return null;
-
-		// Λήψη του XML αρχείου υπότιτλων (προσθήκη fmt=srv3 για καθαρότερη μορφή αν χρειαστεί)
-		const xmlResponse = await fetch(track.baseUrl);
-		const xmlText = await xmlResponse.text();
-
-		// Καθαρισμός των XML tags και HTML entities
-		const cleanText = xmlText
-		.replace(/<text[^>]*>/g, ' ')
-		.replace(/<\/text>/g, ' ')
-		.replace(/&amp;/g, '&')
-		.replace(/&#39;/g, "'")
-		.replace(/&quot;/g, '"')
-		.replace(/&lt;/g, '<')
-		.replace(/&gt;/g, '>')
-		.replace(/<[^>]+>/g, '')
-		.replace(/\s+/g, ' ')
-		.trim();
-
-		return cleanText.length > 0 ? cleanText: null;
+		return cleanText.length > 0 ? cleanText : null;
 	} catch (e) {
-		console.log("Error fetching transcript via InnerTube API:", e.message);
+		console.log("Error fetching transcript via YoutubeTranscript:", e.message);
 		return null;
 	}
 }
