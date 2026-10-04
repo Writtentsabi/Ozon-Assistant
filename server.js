@@ -3,15 +3,14 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import ytdl from '@distube/ytdl-core';
+import {
+	YoutubeTranscript
+} from 'youtube-transcript';
 import {
 	GoogleGenAI,
 	Type
 } from "@google/genai";
 import PaxSenixAI from '@paxsenix/ai';
-import {
-	Innertube
-} from 'youtubei.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,92 +23,28 @@ const ai = new GoogleGenAI( {
 });
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 
-let youtubeInstance = null;
-
-async function getYouTubeInstance() {
-	if (!youtubeInstance) {
-		youtubeInstance = await Innertube.create({
-			lang: 'en',
-			location: 'US',
-			retrieve_player: false
-		});
-	}
-	return youtubeInstance;
-}
-
-// Επεξεργασία YouTube βίντεο μέσω @distube/ytdl-core & Gemini Files API
-async function processYouTubeVideo(promptText, aiInstance) {
+// Ανάκτηση υπότιτλων (Transcript) από YouTube βίντεο
+async function processYouTubeVideo(promptText) {
 	const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
 	const match = promptText.match(ytRegex);
 
 	if (!match || !match[1]) return null;
 	const videoId = match[1];
-	const tempPath = path.join(os.tmpdir(), `yt_${videoId}_${Date.now()}.mp4`);
 
 	try {
-		console.log("Downloading YouTube video via Innertube:", videoId);
-		const yt = await getYouTubeInstance();
+		console.log("Fetching YouTube transcript for video:", videoId);
 
-		// Λήψη του βίντεο σε stream
-		const stream = await yt.download(videoId, {
-			type: 'video+audio',
-			quality: '360p',
-			format: 'mp4'
-		});
+		const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
 
-		const fileStream = fs.createWriteStream(tempPath);
+		if (!transcriptItems || transcriptItems.length === 0) return null;
 
-		await new Promise((resolve, reject) => {
-			async function writeStream() {
-				try {
-					for await (const chunk of stream) {
-						fileStream.write(chunk);
-					}
-					fileStream.end();
-					resolve();
-				} catch (err) {
-					reject(err);
-				}
-			}
-			writeStream();
-		});
+		// Ένωση όλων των προτάσεων σε ένα ενιαίο κείμενο
+		const fullTranscriptText = transcriptItems.map(item => item.text).join(' ');
 
-		if (!fs.existsSync(tempPath)) return null;
-
-		console.log("Uploading video to Gemini Files API...");
-		// 1. Upload στο Gemini Files API
-		const uploadResult = await aiInstance.files.upload({
-			file: tempPath,
-			mimeType: 'video/mp4',
-		});
-
-		// 2. Αναμονή μέχρι να ολοκληρωθεί η επεξεργασία των frames (ACTIVE)
-		let fileState = await aiInstance.files.get({
-			name: uploadResult.name
-		});
-		while (fileState.state === "PROCESSING") {
-			await new Promise((resolve) => setTimeout(resolve, 2000));
-			fileState = await aiInstance.files.get({
-				name: uploadResult.name
-			});
-		}
-
-		// Διαγραφή τοπικού προσωρινού αρχείου
-		if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-
-		if (fileState.state === "ACTIVE") {
-			return {
-				fileData: {
-					mimeType: uploadResult.mimeType,
-					fileUri: uploadResult.uri,
-				}
-			};
-		}
-
-		return null;
+		console.log("Transcript fetched successfully.");
+		return fullTranscriptText;
 	} catch (e) {
-		console.log("Error processing YouTube video via Innertube:", e.message);
-		if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+		console.log("Error fetching YouTube transcript:", e.message);
 		return null;
 	}
 }
@@ -167,7 +102,7 @@ CRITICAL CLASSIFICATION RULES:
 2. ONLY select a setting decision (SEARCH_ENGINE, THEME, JAVASCRIPT, etc.) if the user is explicitly ordering an ACTION to modify/change a browser configuration setting.
 3. Informational questions like "What is the best search engine?" or "Which countries have conscription?" MUST BE CLASSIFIED AS "TEXT".`;
 
-// Ορία Timeout
+// Όρια Timeout
 const GOOGLE_TIMEOUT_MS = 10000; // 10s για Router & UI Settings
 const CHAT_TIMEOUT_MS = 45000; // 45s για Web Search & Video Analysis
 
@@ -202,8 +137,13 @@ app.post('/api/chat', async (req, res) => {
 			}]
 		})): [];
 
-		// Επεξεργασία τυχόν YouTube link στο prompt μέσω ytdl-core & Files API
-		const videoFileRef = await processYouTubeVideo(prompt, ai);
+		// Επεξεργασία τυχόν YouTube link στο prompt μέσω Transcript API
+		const videoTranscript = await processYouTubeVideo(prompt);
+
+		let finalPrompt = prompt;
+		if (videoTranscript) {
+			finalPrompt = `${prompt}\n\n[YouTube Video Transcript]:\n${videoTranscript}`;
+		}
 
 		// 1. Router Call
 		const routerPromise = ai.models.generateContent({
@@ -236,8 +176,8 @@ app.post('/api/chat', async (req, res) => {
 			decision = "TEXT";
 		}
 
-		// Αν βρέθηκε βίντεο, εξαναγκάζουμε την απόφαση σε TEXT για ανάλυση περιεχομένου
-		if (videoFileRef) {
+		// Αν βρέθηκε transcript, εξαναγκάζουμε την απόφαση σε TEXT για ανάλυση περιεχομένου
+		if (videoTranscript) {
 			decision = "TEXT";
 		}
 
@@ -519,7 +459,7 @@ app.post('/api/chat', async (req, res) => {
 			token: uiRes.usageMetadata?.totalTokenCount || 0
 		});
 
-		// 4. Standard Chat, Search & Video Processing
+		// 4. Standard Chat, Search & Transcript Processing
 	} else {
 		const chat = ai.chats.create({
 			model: CHAT_MODEL,
@@ -535,11 +475,6 @@ app.post('/api/chat', async (req, res) => {
 
 	const messageParts = [];
 
-	// Προσθήκη βίντεο αν ανακτήθηκε από το YouTube
-	if (videoFileRef) {
-		messageParts.push(videoFileRef);
-	}
-
 	// Προσθήκη εικόνων αν υπάρχουν στο request
 	if (Array.isArray(images) && images.length > 0) {
 		images.forEach(imgBase64 => {
@@ -552,7 +487,7 @@ app.post('/api/chat', async (req, res) => {
 		});
 	}
 
-	messageParts.push(prompt);
+	messageParts.push(finalPrompt);
 
 	const chatPromise = chat.sendMessage({
 		message: messageParts
