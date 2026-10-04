@@ -4,8 +4,8 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import {
-	YoutubeTranscript
-} from 'youtube-transcript';
+	Innertube
+} from 'youtubei.js';
 import {
 	GoogleGenAI,
 	Type
@@ -24,6 +24,16 @@ const ai = new GoogleGenAI( {
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 
 // Ανάκτηση υπότιτλων (Transcript) από YouTube βίντεο
+let youtubeClient = null;
+
+// Αρχικοποίηση του Innertube client (μια φορά)
+async function getYouTubeClient() {
+	if (!youtubeClient) {
+		youtubeClient = await Innertube.create();
+	}
+	return youtubeClient;
+}
+
 async function processYouTubeVideo(promptText) {
 	const ytRegex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
 	const match = promptText.match(ytRegex);
@@ -32,34 +42,34 @@ async function processYouTubeVideo(promptText) {
 	const videoId = match[1];
 
 	try {
-		console.log("Fetching YouTube transcript for video:", videoId);
+		console.log("Fetching YouTube transcript via Innertube for video:", videoId);
+		const youtube = await getYouTubeClient();
 
-		let transcriptItems;
-		try {
-			// Δοκιμή 1: Ελληνικά
-			transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, {
-				lang: 'el'
-			});
-		} catch (e1) {
-			try {
-				// Δοκιμή 2: Αγγλικά
-				transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, {
-					lang: 'en'
-				});
-			} catch (e2) {
-				// Δοκιμή 3: Προεπιλεγμένη γλώσσα του βίντεο
-				transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
-			}
+		// Λήψη των πληροφοριών του βίντεο
+		const info = await youtube.getInfo(videoId);
+
+		// Λήψη των υποτίτλων (περιλαμβάνει αυτόματους ASR και χειροκίνητους)
+		const transcriptData = await info.getTranscript();
+
+		if (!transcriptData || !transcriptData.transcript || !transcriptData.transcript.content) {
+			console.log(`[Info] No transcripts/captions available for video ${videoId}.`);
+			return null;
 		}
 
-		if (!transcriptItems || transcriptItems.length === 0) return null;
+		// Εξαγωγή του κειμένου από τα body segments
+		const segments = transcriptData.transcript.content.body?.initial_segments || [];
+		const fullTranscriptText = segments
+		.map(segment => segment.snippet?.text || '')
+		.filter(text => text.length > 0)
+		.join(' ');
 
-		const fullTranscriptText = transcriptItems.map(item => item.text).join(' ');
+		if (!fullTranscriptText) return null;
 
-		console.log("Transcript fetched successfully.");
+		console.log("Transcript fetched successfully (including auto-generated).");
 		return fullTranscriptText;
+
 	} catch (e) {
-		console.log("Error fetching YouTube transcript:", e.message);
+		console.log("Error fetching YouTube transcript with Innertube:", e.message);
 		return null;
 	}
 }
