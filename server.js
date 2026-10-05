@@ -12,11 +12,14 @@ import {
 } from "@google/genai";
 import PaxSenixAI from '@paxsenix/ai';
 import {
-	Bot
-} from 'node-telegram-bot-api';
+	Bot,
+	InputFile,
+	InlineKeyboard
+} from 'grammy';
 import {
 	run
-} from 'node-telegram-bot-api/node';
+} from '@grammyjs/runner';
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -616,9 +619,6 @@ status: "online"
 }));
 
 // TELEGRAM BOT (Full Capabilities, Admin Approval & Topic Broadcasts)
-import {
-InputFile, InlineKeyboard
-} from 'node-telegram-bot-api';
 
 const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
 
