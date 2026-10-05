@@ -613,9 +613,13 @@ status: "online"
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
 if (botToken) {
-import('node-telegram-bot-api').then((module) => {
-// Παίρνουμε την κλάση είτε από το default property είτε από το module ρίζα
-const TelegramBot = module.default || module;
+import('node-telegram-bot-api').then((mod) => {
+// Ασφαλής εντοπισμός της κλάσης (function)
+const TelegramBot = typeof mod.TelegramBot === 'function'
+? mod.TelegramBot: (typeof mod === 'function' ? mod: mod.default);
+
+console.log('Resolved TelegramBot type:', typeof TelegramBot);
+
 const bot = new TelegramBot(botToken, {
 polling: true
 });
