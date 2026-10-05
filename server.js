@@ -11,6 +11,7 @@ import {
 	Type
 } from "@google/genai";
 import PaxSenixAI from '@paxsenix/ai';
+import TelegramBot from 'node-telegram-bot-api';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -608,5 +609,74 @@ error: "Failed to generate quiz.", details: error.message
 app.get('/api/wakeup', (req, res) => res.status(200).json({
 status: "online"
 }));
+
+// --- TELEGRAM BOT INTEGRATION ---
+const botToken = process.env.TELEGRAM_BOT_TOKEN;
+
+if (botToken) {
+const bot = new TelegramBot(botToken, {
+polling: true
+});
+console.log('Telegram Bot initialized and listening...');
+
+bot.on('message', async (msg) => {
+const chatId = msg.chat.id;
+const text = msg.text;
+
+if (!text) return;
+
+bot.sendChatAction(chatId, 'typing');
+
+try {
+const videoTranscript = await processYouTubeVideo(text);
+let finalPrompt = text;
+if (videoTranscript) {
+finalPrompt = `${text}\n\n[YouTube Video Transcript]:\n${videoTranscript}`;
+}
+
+const chat = ai.chats.create({
+model: CHAT_MODEL,
+config: {
+systemInstruction: "Your name is Zen. Answer concisely and clearly in plain text or Markdown.",
+tools: [{
+googleSearch: {}
+}],
+safetySettings: safety
+}
+});
+
+const chatPromise = chat.sendMessage({
+message: finalPrompt
+});
+const response = await withTimeout(chatPromise, CHAT_TIMEOUT_MS);
+
+let replyText = response.text || "Δεν είχα κάποια απάντηση.";
+replyText = replyText.replace(/<div class="thought">[\s\S]*?<\/div>/gi, '');
+replyText = replyText.replace(/<[^>]*>?/gm, '');
+
+await bot.sendMessage(chatId, replyText.trim());
+
+} catch (error) {
+console.error('Telegram Bot Error:', error.message);
+
+try {
+const paxResponse = await paxsenix.createChatCompletion({
+model: 'gpt-4o-mini',
+messages: [{
+role: 'system', content: "Your name is Zen. Answer concisely."
+},
+{
+role: 'user', content: text
+}]
+});
+await bot.sendMessage(chatId, paxResponse.choices[0].message.content);
+} catch (paxErr) {
+await bot.sendMessage(chatId, "Συγγνώμη, υπήρξε πρόβλημα κατά την επεξεργασία του αιτήματος.");
+}
+}
+});
+} else {
+console.log('TELEGRAM_BOT_TOKEN is not set. Telegram Bot is disabled.');
+}
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
