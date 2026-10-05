@@ -11,8 +11,6 @@ import {
 	Type
 } from "@google/genai";
 import PaxSenixAI from '@paxsenix/ai';
-import TelegramBotModule from 'node-telegram-bot-api';
-const TelegramBot = TelegramBotModule.default || TelegramBotModule;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -611,10 +609,15 @@ app.get('/api/wakeup', (req, res) => res.status(200).json({
 status: "online"
 }));
 
-// --- TELEGRAM BOT INTEGRATION ---
+//TELEGRAM BOT
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
 if (botToken) {
+// Δυναμικό import του CommonJS module
+import('node-telegram-bot-api').then(({
+default: TelegramBotClass
+}) => {
+const TelegramBot = TelegramBotClass || TelegramBotModule;
 const bot = new TelegramBot(botToken, {
 polling: true
 });
@@ -651,7 +654,7 @@ message: finalPrompt
 });
 const response = await withTimeout(chatPromise, CHAT_TIMEOUT_MS);
 
-let replyText = response.text || "Δεν είχα κάποια απάντηση.";
+let replyText = response.text || "They don't allow me to respond to that.";
 replyText = replyText.replace(/<div class="thought">[\s\S]*?<\/div>/gi, '');
 replyText = replyText.replace(/<[^>]*>?/gm, '');
 
@@ -672,10 +675,12 @@ role: 'user', content: text
 });
 await bot.sendMessage(chatId, paxResponse.choices[0].message.content);
 } catch (paxErr) {
-await bot.sendMessage(chatId, "Συγγνώμη, υπήρξε πρόβλημα κατά την επεξεργασία του αιτήματος.");
+await bot.sendMessage(chatId, "I'm sorry there was a problem at processing your request.");
 }
 }
 });
+}).catch(err => console.error("Failed to load TelegramBot:",
+err));
 } else {
 console.log('TELEGRAM_BOT_TOKEN is not set. Telegram Bot is disabled.');
 }
