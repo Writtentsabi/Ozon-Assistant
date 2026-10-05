@@ -11,6 +11,10 @@ import {
 	Type
 } from "@google/genai";
 import PaxSenixAI from '@paxsenix/ai';
+import {
+	createRequire
+} from 'module';
+const require = createRequire(import.meta.url);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -613,13 +617,8 @@ status: "online"
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
 if (botToken) {
-import('node-telegram-bot-api').then((mod) => {
-// Ασφαλής εντοπισμός της κλάσης (function)
-const TelegramBot = typeof mod.TelegramBot === 'function'
-? mod.TelegramBot: (typeof mod === 'function' ? mod: mod.default);
-
-console.log('Resolved TelegramBot type:', typeof TelegramBot);
-
+try {
+const TelegramBot = require('node-telegram-bot-api');
 const bot = new TelegramBot(botToken, {
 polling: true
 });
@@ -681,10 +680,13 @@ await bot.sendMessage(chatId, "I'm sorry there was a problem at processing your 
 }
 }
 });
-}).catch(err => console.error("Failed to load TelegramBot:",
-err));
+} catch (err) {
+console.error("Failed to load TelegramBot:",
+err.message);
+}
 } else {
 console.log('TELEGRAM_BOT_TOKEN is not set. Telegram Bot is disabled.');
 }
+
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
