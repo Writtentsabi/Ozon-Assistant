@@ -615,68 +615,453 @@ app.get('/api/wakeup', (req, res) => res.status(200).json({
 status: "online"
 }));
 
-//TELEGRAM BOT
+// TELEGRAM BOT (Full Capabilities, Admin Approval & Topic Broadcasts)
+import {
+InputFile, InlineKeyboard
+} from 'node-telegram-bot-api';
+
 const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
 
+// Χάρτης με τα ID των Topics του Supergroup (Αντικατάστησε τα IDs με τα δικά σου)
+const TOPIC_MAP = {
+ANNOUNCEMENTS: 2, // ID του Topic για Ανακοινώσεις
+UPDATES: 4, // ID του Topic για Updates/Features
+GENERAL: 1 // Default Main Topic
+};
+
+// Το Chat ID της ομάδας (Supergroup) στην οποία θα γίνονται οι αναδημοσιεύσεις
+const TARGET_GROUP_ID = process.env.TELEGRAM_TARGET_GROUP_ID;
+
 if (telegramToken) {
-	const bot = new Bot(telegramToken);
+const bot = new Bot(telegramToken);
 
-	bot.on('message', async (ctx) => {
-		const userPrompt = ctx.message?.text;
+// ----------------------------------------------------
+// 1. INLINE KEYBOARD CALLBACKS (Approve / Reject)
+// ----------------------------------------------------
+bot.on('callback_query:data', async (ctx) => {
+const data = ctx.callbackQuery.data;
 
-		if (!userPrompt) return;
+if (data.startsWith('approve_') || data.startsWith('reject_')) {
+const [action,
+targetAction,
+chatId,
+userIdStr,
+messageIdStr] = data.split('_');
+const targetUserId = parseInt(userIdStr);
+const targetMessageId = parseInt(messageIdStr);
 
-		try {
-			// Ένδειξη πληκτρολόγησης στο Telegram
-			await ctx.api.sendChatAction({
-				chat_id: ctx.chat.id, action: 'typing'
-			});
-
-			// Δημιουργία Chat Session διατηρώντας την ταυτότητα του Zen
-			const chat = ai.chats.create({
-				model: CHAT_MODEL,
-				config: {
-					systemInstruction: `Your name is Zen, you are the personal assistant for OxyZen.
-					CORE RULES:
-					1. Maintain your helpful, smart, and concise persona as Zen.
-					2. Provide direct, clean responses in standard text or simple Telegram markdown.
-					3. Do NOT use HTML tags (like <div>, <p>, <span>) or code blocks in your responses for Telegram.`,
-					tools: [{
-						googleSearch: {}
-					}],
-					safetySettings: safety,
-				},
-			});
-
-			// Κλήση στο Gemini API
-			const chatPromise = chat.sendMessage({
-				message: userPrompt
-			});
-			const response = await withTimeout(chatPromise, CHAT_TIMEOUT_MS);
-
-			// Αφαίρεση τυχόν υπολειμμάτων HTML/Thought tags
-			let cleanResponse = response.text
-			.replace(/<div class="thought">[\s\S]*?<\/div>/gi, '')
-			.replace(/<\/?[^>]+(>|$)/g, '')
-			.trim();
-
-			if (!cleanResponse) cleanResponse = response.text;
-
-			// Αποστολή απάντησης στο Telegram
-			await ctx.reply(cleanResponse);
-
-		} catch (error) {
-			console.error("Telegram Bot Error:", error);
-			await ctx.reply("⚠️ Error at message processing.");
-		}
-	});
-
-	bot.catch((err) => console.error("Telegram error:", err));
-
-	run(bot);
-	console.log("Telegram Bot initialized as Zen successfully.");
-} else {
-	console.log("TELEGRAM_BOT_TOKEN is missing in environment variables.");
+if (action === 'reject') {
+await ctx.editMessageText("❌ Action rejected by admin.");
+await ctx.answerCallbackQuery({
+text: "Action cancelled."
+});
+return;
 }
+
+if (action === 'approve') {
+try {
+if (targetAction === 'kick') {
+await ctx.api.banChatMember({
+chat_id: chatId, user_id: targetUserId
+});
+await ctx.api.unbanChatMember({
+chat_id: chatId, user_id: targetUserId
+});
+await ctx.editMessageText("✅ User successfully kicked upon approval.");
+} else if (targetAction === 'ban') {
+await ctx.api.banChatMember({
+chat_id: chatId, user_id: targetUserId
+});
+await ctx.editMessageText("✅ User successfully banned upon approval.");
+} else if (targetAction === 'del') {
+await ctx.api.deleteMessage({
+chat_id: chatId, message_id: targetMessageId
+});
+await ctx.editMessageText("✅ Message successfully deleted upon approval.");
+}
+await ctx.answerCallbackQuery({
+text: "Action executed!"
+});
+} catch (err) {
+console.error("Error executing approved action:", err);
+await ctx.editMessageText("⚠️ Failed to execute action (insufficient permissions).");
+}
+}
+}
+});
+
+// ----------------------------------------------------
+// 2. CHANNEL POSTS ROUTING (Owner Updates to Topics)
+// ----------------------------------------------------
+bot.on('channel_post',
+async (ctx) => {
+const channelPost = ctx.channelPost;
+const postText = channelPost?.text || channelPost?.caption || "";
+
+if (!postText || !TARGET_GROUP_ID) return;
+
+try {
+// Χρήση του Router για την επιλογή του κατάλληλου Topic
+const topicAnalysis = await withTimeout(
+ai.models.generateContent({
+model: ROUTER_MODEL,
+contents: [{
+role: "user", parts: [{
+text: `Categorize channel update: "${postText}"`
+}]
+}],
+config: {
+systemInstruction: `You are a content router for Telegram topics. Categorize the post into one of these keys: "ANNOUNCEMENTS", "UPDATES", or "GENERAL".
+Return JSON format: { "topic": "ANNOUNCEMENTS" }`,
+responseMimeType: "application/json",
+temperature: 0.0
+}
+}),
+3000
+);
+
+const result = JSON.parse(topicAnalysis.text);
+const selectedTopicKey = result?.topic?.toUpperCase() || "ANNOUNCEMENTS";
+const targetThreadId = TOPIC_MAP[selectedTopicKey] || TOPIC_MAP.GENERAL;
+
+// Αναδημοσίευση (Forward) του μηνύματος του ιδιοκτήτη στο σωστό Topic της ομάδας
+await ctx.api.forwardMessage({
+chat_id: TARGET_GROUP_ID,
+from_chat_id: channelPost.chat.id,
+message_id: channelPost.message_id,
+message_thread_id: targetThreadId
+});
+
+console.log(`Forwarded channel post to topic thread ID: ${targetThreadId}`);
+} catch (err) {
+console.error("Error forwarding channel post to topic:", err);
+}
+});
+
+// ----------------------------------------------------
+// 3. MAIN MESSAGE HANDLER (Group & Direct Messages)
+// ----------------------------------------------------
+bot.on('message',
+async (ctx) => {
+const chatId = ctx.chat.id;
+const userPrompt = ctx.message?.text || ctx.message?.caption || "";
+const photo = ctx.message?.photo;
+const messageId = ctx.message?.message_id;
+const replyToMessage = ctx.message?.reply_to_message;
+const sender = ctx.message?.from;
+
+if (!userPrompt && !photo) return;
+
+try {
+// ADMIN COMMANDS
+if (userPrompt.startsWith('/pin')) {
+if (replyToMessage) {
+await ctx.api.pinChatMessage({
+chat_id: chatId, message_id: replyToMessage.message_id
+});
+await ctx.reply("📌 Message pinned successfully.");
+} else {
+await ctx.reply("⚠️ Please reply to the message you want to pin using /pin.");
+}
+return;
+}
+
+if (userPrompt.startsWith('/unpin')) {
+if (replyToMessage) {
+await ctx.api.unpinChatMessage({
+chat_id: chatId, message_id: replyToMessage.message_id
+});
+await ctx.reply("📌 Message unpinned.");
+} else {
+await ctx.api.unpinAllChatMessages({
+chat_id: chatId
+});
+await ctx.reply("📌 All messages unpinned.");
+}
+return;
+}
+
+// AUTO-MODERATION WITH APPROVAL SYSTEM
+if (userPrompt.length > 0 && !userPrompt.startsWith('/')) {
+try {
+const modCheck = await withTimeout(
+ai.models.generateContent({
+model: ROUTER_MODEL,
+contents: [{
+role: "user", parts: [{
+text: `Analyze message for moderation: "${userPrompt}"`
+}]
+}],
+config: {
+systemInstruction: `You are an automated group moderator. Analyze the message for rule violations (spam, severe toxicity, unauthorized ads, explicit hate speech).
+Return JSON with format:
+{
+"violation": true/false,
+"reason": "short explanation",
+"recommendedAction": "DELETE" or "KICK" or "BAN" or "NONE"
+}`,
+responseMimeType: "application/json",
+temperature: 0.0
+}
+}),
+3000
+);
+
+const modResult = JSON.parse(modCheck.text);
+
+if (modResult?.violation && modResult.recommendedAction !== "NONE") {
+const actionMap = {
+"DELETE": "del",
+"KICK": "kick",
+"BAN": "ban"
+};
+const actionCode = actionMap[modResult.recommendedAction] || "del";
+
+const keyboard = new InlineKeyboard()
+.text("✅ Approve", `approve_${actionCode}_${chatId}_${sender.id}_${messageId}`)
+.text("❌ Reject", `reject_${actionCode}_${chatId}_${sender.id}_${messageId}`);
+
+await ctx.reply(
+`🛡️ **Moderation Flag**\n\n` +
+`• **User:** ${sender.first_name} (@${sender.username || 'N/A'})\n` +
+`• **Reason:** ${modResult.reason}\n` +
+`• **Suggested Action:** ${modResult.recommendedAction}\n\n` +
+`*Admin approval required to execute:*`,
+{
+reply_markup: keyboard, parse_mode: "Markdown"
+}
+);
+return;
+}
+} catch (modErr) {
+console.error("Moderation check failed:", modErr);
+}
+}
+
+// STANDARD ZEN AI & ROUTING LOGIC
+await ctx.api.sendChatAction({
+chat_id: chatId, action: 'typing'
+});
+
+let imagesPayload = [];
+let mimeType = "image/jpeg";
+
+if (photo && photo.length > 0) {
+const highestResPhoto = photo[photo.length - 1];
+const fileInfo = await ctx.api.getFile({
+file_id: highestResPhoto.file_id
+});
+const fileUrl = `https://api.telegram.org/file/bot${telegramToken}/${fileInfo.file_path}`;
+
+const responseImg = await fetch(fileUrl);
+const arrayBuffer = await responseImg.arrayBuffer();
+const base64Img = Buffer.from(arrayBuffer).toString('base64');
+imagesPayload.push(base64Img);
+}
+
+const videoTranscript = await processYouTubeVideo(userPrompt);
+let finalPrompt = userPrompt;
+if (videoTranscript) {
+finalPrompt = `${userPrompt}\n\n[YouTube Video Transcript]:\n${videoTranscript}`;
+}
+
+let decision = "TEXT";
+if (imagesPayload.length === 0 && !videoTranscript) {
+try {
+const routerResponse = await withTimeout(
+ai.models.generateContent({
+model: ROUTER_MODEL,
+contents: [{
+role: "user", parts: [{
+text: `Analyze user intent: "${userPrompt}"`
+}]
+}],
+config: {
+systemInstruction: ROUTER_SYSTEM_INSTRUCTION,
+responseMimeType: "application/json",
+responseSchema: buildSchema( {
+decision: {
+type: Type.STRING
+}
+}, ["decision"]),
+temperature: 0.0
+}
+}),
+GOOGLE_TIMEOUT_MS
+);
+const routerJson = JSON.parse(routerResponse.text);
+if (routerJson?.decision) decision = routerJson.decision.trim().toUpperCase();
+} catch (e) {
+decision = "TEXT";
+}
+}
+
+if (decision === "IMAGE") {
+await ctx.api.sendChatAction({
+chat_id: chatId, action: 'upload_photo'
+});
+
+const imgRes = await withTimeout(
+ai.models.generateContent({
+model: IMAGE_MODEL,
+contents: [{
+role: "user",
+parts: [{
+text: userPrompt
+},
+...imagesPayload.map(img => ({
+inlineData: {
+data: img, mimeType
+}
+}))
+]
+}],
+config: {
+responseModalities: ['IMAGE'],
+safetySettings: safety,
+imageConfig: {
+aspectRatio: "1:1"
+}
+}
+}),
+15000
+);
+
+const parts = imgRes.candidates?.[0]?.content?.parts || [];
+const generatedImage = parts.find(p => p.inlineData);
+
+if (generatedImage) {
+const imgBuffer = Buffer.from(generatedImage.inlineData.data, 'base64');
+await ctx.api.sendPhoto({
+chat_id: chatId,
+photo: new InputFile(imgBuffer, {
+filename: "generated.jpg"
+}),
+caption: "🎨 Here is your generated image by Zen!"
+});
+return;
+}
+}
+
+const chat = ai.chats.create({
+model: CHAT_MODEL,
+config: {
+systemInstruction: `Your name is Zen, you are the personal assistant for OxyZen and community manager.
+CORE RULES:
+1. Maintain your helpful, smart, and concise persona as Zen.
+2. Provide direct, clean responses in standard text or simple Markdown.
+3. Do NOT use HTML tags (like <div>, <p>, <span>) or raw code blocks in responses.`,
+tools: [{
+googleSearch: {}
+}],
+safetySettings: safety,
+},
+});
+
+const messageParts = [];
+if (imagesPayload.length > 0) {
+imagesPayload.forEach(imgBase64 => {
+messageParts.push({
+inlineData: {
+data: imgBase64, mimeType
+}
+});
+});
+}
+messageParts.push(finalPrompt || "Describe this image.");
+
+const response = await withTimeout(chat.sendMessage({
+message: messageParts
+}), CHAT_TIMEOUT_MS);
+
+let cleanResponse = response.text
+.replace(/<div class="thought">[\s\S]*?<\/div>/gi, '')
+.replace(/<\/?[^>]+(>|$)/g, '')
+.trim();
+
+if (!cleanResponse) cleanResponse = response.text;
+
+await ctx.reply(cleanResponse);
+
+} catch (error) {
+console.error("Telegram Bot Error:", error);
+await ctx.reply("⚠️ An error occurred while processing your request.");
+}
+});
+
+bot.catch((err) => console.error("Telegram error:", err));
+
+run(bot);
+console.log("Telegram Bot initialized with Channel Broadcasts & Topics routing.");
+} else {
+console.log("TELEGRAM_BOT_TOKEN is missing in environment variables.");
+}
+
+// GITHUB WEBHOOK HANDLER (Broadcast to Telegram Topics)
+app.post('/api/github-webhook', async (req, res) => {
+const event = req.headers['x-github-event'];
+const payload = req.body;
+
+if (!payload || !process.env.TELEGRAM_TARGET_GROUP_ID) {
+return res.status(400).send('Missing payload or Telegram configuration.');
+}
+
+try {
+let messageText = "";
+let category = "UPDATES";
+
+// 1. Νέο Release (π.χ. OxyZen Browser v2.0)
+if (event === 'release' && payload.action === 'published') {
+category = "ANNOUNCEMENTS";
+messageText = `🚀 **New Release Published!**\n\n` +
+`• **Version:** ${payload.release.tag_name}\n` +
+`• **Name:** ${payload.release.name || 'N/A'}\n` +
+`• **Repository:** ${payload.repository.name}\n\n` +
+`${payload.release.body || ''}\n\n` +
+`🔗 [View Release](${payload.release.html_url})`;
+}
+// 2. Νέο Commit στο main/master branch
+else if (event === 'push') {
+category = "UPDATES";
+const commits = payload.commits || [];
+if (commits.length === 0) return res.status(200).send('No commits found.');
+
+const commitMessages = commits.map(c => `• ${c.message} (by _${c.author.name}_)`).join('\n');
+messageText = `🔨 **New Commit(s) Pushed!**\n\n` +
+`• **Repository:** ${payload.repository.name}\n` +
+`• **Branch:** ${payload.ref.replace('refs/heads/', '')}\n\n` +
+`${commitMessages}\n\n` +
+`🔗 [Compare Changes](${payload.compare})`;
+}
+// 3. Νέο Issue ή Pull Request
+else if (event === 'issues' && payload.action === 'opened') {
+category = "GENERAL";
+messageText = `🐛 **New Issue Opened**\n\n` +
+`• **Title:** ${payload.issue.title}\n` +
+`• **Author:** @${payload.issue.user.login}\n\n` +
+`🔗 [View Issue](${payload.issue.html_url})`;
+}
+
+if (messageText) {
+const targetThreadId = TOPIC_MAP[category] || TOPIC_MAP.GENERAL;
+
+// Αποστολή του μηνύματος στο συγκεκριμένο Topic της ομάδας
+await bot.api.sendMessage(
+process.env.TELEGRAM_TARGET_GROUP_ID,
+messageText,
+{
+message_thread_id: targetThreadId,
+parse_mode: 'Markdown',
+disable_web_page_preview: true
+}
+);
+}
+
+return res.status(200).send('Webhook processed successfully.');
+} catch (error) {
+console.error('Error handling GitHub webhook:', error);
+return res.status(500).send('Internal Server Error');
+}
+});
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
