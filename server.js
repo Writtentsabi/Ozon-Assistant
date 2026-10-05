@@ -618,7 +618,10 @@ const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
 if (botToken) {
 try {
-const TelegramBot = require('node-telegram-bot-api');
+const imported = require('node-telegram-bot-api');
+const TelegramBot = typeof imported === 'function'
+? imported: (imported.default || imported.TelegramBot || imported);
+
 const bot = new TelegramBot(botToken, {
 polling: true
 });
@@ -687,6 +690,5 @@ err.message);
 } else {
 console.log('TELEGRAM_BOT_TOKEN is not set. Telegram Bot is disabled.');
 }
-
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
