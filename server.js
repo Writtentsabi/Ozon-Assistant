@@ -613,11 +613,9 @@ status: "online"
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
 if (botToken) {
-// Δυναμικό import του CommonJS module
-import('node-telegram-bot-api').then(({
-default: TelegramBotClass
-}) => {
-const TelegramBot = TelegramBotClass || TelegramBotModule;
+import('node-telegram-bot-api').then((module) => {
+// Παίρνουμε την κλάση είτε από το default property είτε από το module ρίζα
+const TelegramBot = module.default || module;
 const bot = new TelegramBot(botToken, {
 polling: true
 });
