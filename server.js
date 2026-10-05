@@ -11,7 +11,9 @@ import {
 	Type
 } from "@google/genai";
 import PaxSenixAI from '@paxsenix/ai';
-import TelegramBot from 'node-telegram-bot-api';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const TelegramBot = require('node-telegram-bot-api');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
