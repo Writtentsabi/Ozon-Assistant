@@ -12,9 +12,11 @@ import {
 } from "@google/genai";
 import PaxSenixAI from '@paxsenix/ai';
 import {
-	createRequire
-} from 'module';
-const require = createRequire(import.meta.url);
+	Bot
+} from 'node-telegram-bot-api';
+import {
+	run
+} from 'node-telegram-bot-api/node';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -614,81 +616,67 @@ status: "online"
 }));
 
 //TELEGRAM BOT
-const botToken = process.env.TELEGRAM_BOT_TOKEN;
+const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
 
-if (botToken) {
-try {
-const imported = require('node-telegram-bot-api');
-const TelegramBot = typeof imported === 'function'
-? imported: (imported.default || imported.TelegramBot || imported);
+if (telegramToken) {
+	const bot = new Bot(telegramToken);
 
-const bot = new TelegramBot(botToken, {
-polling: true
-});
-console.log('Telegram Bot initialized and listening...');
+	bot.on('message', async (ctx) => {
+		const userPrompt = ctx.message?.text;
 
-bot.on('message', async (msg) => {
-const chatId = msg.chat.id;
-const text = msg.text;
+		if (!userPrompt) return;
 
-if (!text) return;
+		try {
+			// Ένδειξη πληκτρολόγησης στο Telegram
+			await ctx.api.sendChatAction({
+				chat_id: ctx.chat.id, action: 'typing'
+			});
 
-bot.sendChatAction(chatId, 'typing');
+			// Δημιουργία Chat Session διατηρώντας την ταυτότητα του Zen
+			const chat = ai.chats.create({
+				model: CHAT_MODEL,
+				config: {
+					systemInstruction: `Your name is Zen, you are the personal assistant for OxyZen.
+					CORE RULES:
+					1. Maintain your helpful, smart, and concise persona as Zen.
+					2. Provide direct, clean responses in standard text or simple Telegram markdown.
+					3. Do NOT use HTML tags (like <div>, <p>, <span>) or code blocks in your responses for Telegram.`,
+					tools: [{
+						googleSearch: {}
+					}],
+					safetySettings: safety,
+				},
+			});
 
-try {
-const videoTranscript = await processYouTubeVideo(text);
-let finalPrompt = text;
-if (videoTranscript) {
-finalPrompt = `${text}\n\n[YouTube Video Transcript]:\n${videoTranscript}`;
-}
+			// Κλήση στο Gemini API
+			const chatPromise = chat.sendMessage({
+				message: userPrompt
+			});
+			const response = await withTimeout(chatPromise, CHAT_TIMEOUT_MS);
 
-const chat = ai.chats.create({
-model: CHAT_MODEL,
-config: {
-systemInstruction: "Your name is Zen. Answer concisely and clearly in plain text or Markdown.",
-tools: [{
-googleSearch: {}
-}],
-safetySettings: safety
-}
-});
+			// Αφαίρεση τυχόν υπολειμμάτων HTML/Thought tags
+			let cleanResponse = response.text
+			.replace(/<div class="thought">[\s\S]*?<\/div>/gi, '')
+			.replace(/<\/?[^>]+(>|$)/g, '')
+			.trim();
 
-const chatPromise = chat.sendMessage({
-message: finalPrompt
-});
-const response = await withTimeout(chatPromise, CHAT_TIMEOUT_MS);
+			if (!cleanResponse) cleanResponse = response.text;
 
-let replyText = response.text || "They don't allow me to respond to that.";
-replyText = replyText.replace(/<div class="thought">[\s\S]*?<\/div>/gi, '');
-replyText = replyText.replace(/<[^>]*>?/gm, '');
+			// Αποστολή απάντησης στο Telegram
+			await ctx.reply(cleanResponse);
 
-await bot.sendMessage(chatId, replyText.trim());
+		} catch (error) {
+			console.error("Telegram Bot Error:", error);
+			await ctx.reply("⚠️ Error at message processing.");
+		}
+	});
 
-} catch (error) {
-console.error('Telegram Bot Error:', error.message);
+	bot.catch((err) => console.error("Telegram error:", err));
 
-try {
-const paxResponse = await paxsenix.createChatCompletion({
-model: 'gpt-4o-mini',
-messages: [{
-role: 'system', content: "Your name is Zen. Answer concisely."
-},
-{
-role: 'user', content: text
-}]
-});
-await bot.sendMessage(chatId, paxResponse.choices[0].message.content);
-} catch (paxErr) {
-await bot.sendMessage(chatId, "I'm sorry there was a problem at processing your request.");
-}
-}
-});
-} catch (err) {
-console.error("Failed to load TelegramBot:",
-err.message);
-}
+	run(bot);
+	console.log("Telegram Bot initialized as Zen successfully.");
 } else {
-console.log('TELEGRAM_BOT_TOKEN is not set. Telegram Bot is disabled.');
+	console.log("TELEGRAM_BOT_TOKEN is missing in environment variables.");
 }
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
