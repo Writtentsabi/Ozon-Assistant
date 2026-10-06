@@ -722,22 +722,21 @@ if (!userPrompt && !photo) return;
 // ----------------------------------------------------
 // ΕΛΕΓΧΟΣ: Απαντάει ΜΟΝΟ αν του απευθύνονται
 // ----------------------------------------------------
-const botUsername = ctx.me.username; // Το username του bot
-const isPrivateChat = ctx.chat.type === 'private'; // Σε private chat απαντάει πάντα
-const isReplyToBot = replyToMessage && replyToMessage.from?.id === ctx.me.id; // Reply σε μήνυμα του bot
-const isMentioned = userPrompt.includes(`@${botUsername}`); // Mention με @botusername
+const botUsername = ctx.me.username;
+const isPrivateChat = ctx.chat.type === 'private';
+const isReplyToBot = replyToMessage && replyToMessage.from?.id === ctx.me.id;
+const isMentioned = userPrompt.includes(`@${botUsername}`);
 
-// Αν ΔΕΝ είναι προσωπικό τσατ, ΔΕΝ είναι reply στο bot και ΔΕΝ το έκαναν mention:
-// Αφήνουμε ΜΟΝΟ το auto-moderation να τρέξει (αν θέλουμε), αλλά ΔΕΝ παράγουμε AI απάντηση!
 const isDirectlyAddressed = isPrivateChat || isReplyToBot || isMentioned;
 
-// ADMIN COMMANDS (π.χ. /pin, /unpin)
+try {
+// ADMIN COMMANDS
 if (userPrompt.startsWith('/pin')) {
 if (replyToMessage) {
 await ctx.api.pinChatMessage(chatId, replyToMessage.message_id);
 await ctx.reply("📌 Message pinned successfully.");
 } else {
-await ctx.reply("⚠️ Please reply to the message you want to pin using /pin.");
+await ctx.reply("⚠️️ Please reply to the message you want to pin using /pin.");
 }
 return;
 }
@@ -753,7 +752,7 @@ await ctx.reply("📌 All messages unpinned.");
 return;
 }
 
-// AUTO-MODERATION WITH APPROVAL SYSTEM (Τρέχει για OLA τα μηνύματα)
+// AUTO-MODERATION WITH APPROVAL SYSTEM
 if (userPrompt.length > 0 && !userPrompt.startsWith('/')) {
 try {
 const modCheck = await withTimeout(
@@ -812,11 +811,7 @@ if (!isDirectlyAddressed) {
 return;
 }
 
-// Καθαρίζουμε το @botusername από το prompt για να μην μπερδεύεται το AI
 const cleanPrompt = userPrompt.replace(`@${botUsername}`, '').trim();
-
-// STANDARD ZEN AI & ROUTING LOGIC... (συνεχίζει κανονικά ο κώδικάς σου)
-
 
 // STANDARD ZEN AI & ROUTING LOGIC
 await ctx.replyWithChatAction('typing');
@@ -835,10 +830,11 @@ const base64Img = Buffer.from(arrayBuffer).toString('base64');
 imagesPayload.push(base64Img);
 }
 
-const videoTranscript = await processYouTubeVideo(userPrompt);
-let finalPrompt = userPrompt;
+const promptForAi = cleanPrompt || userPrompt;
+const videoTranscript = await processYouTubeVideo(promptForAi);
+let finalPrompt = promptForAi;
 if (videoTranscript) {
-finalPrompt = `${userPrompt}\n\n[YouTube Video Transcript]:\n${videoTranscript}`;
+finalPrompt = `${promptForAi}\n\n[YouTube Video Transcript]:\n${videoTranscript}`;
 }
 
 let decision = "TEXT";
@@ -849,7 +845,7 @@ ai.models.generateContent({
 model: ROUTER_MODEL,
 contents: [{
 role: "user", parts: [{
-text: `Analyze user intent: "${userPrompt}"`
+text: `Analyze user intent: "${promptForAi}"`
 }]
 }],
 config: {
@@ -881,7 +877,7 @@ model: IMAGE_MODEL,
 contents: [{
 role: "user",
 parts: [{
-text: userPrompt
+text: promptForAi
 },
 ...imagesPayload.map(img => ({
 inlineData: {
@@ -961,6 +957,7 @@ console.error("Telegram Bot Error:", error);
 await ctx.reply("⚠️ An error occurred while processing your request.");
 }
 });
+
 
 bot.catch((err) => console.error("Telegram Runner Error:", err.message));
 
