@@ -20,7 +20,6 @@ import {
 	run
 } from '@grammyjs/runner';
 
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
@@ -32,10 +31,11 @@ const ai = new GoogleGenAI( {
 });
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 
-// Ανάκτηση υπότιτλων (Transcript) από YouTube βίντεο
+// ----------------------------------------------------
+// YOUTUBE TRANSCRIPT CLIENT (Innertube)
+// ----------------------------------------------------
 let youtubeClient = null;
 
-// Αρχικοποίηση του Innertube client (μια φορά)
 async function getYouTubeClient() {
 	if (!youtubeClient) {
 		youtubeClient = await Innertube.create();
@@ -53,11 +53,7 @@ async function processYouTubeVideo(promptText) {
 	try {
 		console.log("Fetching YouTube transcript via Innertube for video:", videoId);
 		const youtube = await getYouTubeClient();
-
-		// Λήψη των πληροφοριών του βίντεο
 		const info = await youtube.getInfo(videoId);
-
-		// Λήψη των υποτίτλων (περιλαμβάνει αυτόματους ASR και χειροκίνητους)
 		const transcriptData = await info.getTranscript();
 
 		if (!transcriptData || !transcriptData.transcript || !transcriptData.transcript.content) {
@@ -65,7 +61,6 @@ async function processYouTubeVideo(promptText) {
 			return null;
 		}
 
-		// Εξαγωγή του κειμένου από τα body segments
 		const segments = transcriptData.transcript.content.body?.initial_segments || [];
 		const fullTranscriptText = segments
 		.map(segment => segment.snippet?.text || '')
@@ -74,7 +69,7 @@ async function processYouTubeVideo(promptText) {
 
 		if (!fullTranscriptText) return null;
 
-		console.log("Transcript fetched successfully (including auto-generated).");
+		console.log("Transcript fetched successfully.");
 		return fullTranscriptText;
 
 	} catch (e) {
@@ -117,10 +112,10 @@ const ROUTER_SYSTEM_INSTRUCTION = `You are an intent classification routing assi
 Analyze the user's latest request in the context of the conversation history and classify their intent into EXACTLY ONE of the following uppercase decisions:
 
 - IMAGE: Generate, draw, create, or modify an image or visual artwork.
-- NAVIGATE: Explicit command to open, visit, launch, or go to a specific URL/website (e.g., "go to youtube.com", "open wikipedia").
+- NAVIGATE: Explicit command to open, visit, launch, or go to a specific URL/website.
 - THEME: Explicit command to change or set the browser theme (dark, light, or system).
 - TOOLBAR: Explicit command to move or change toolbar placement or status (top, bottom, show, hide).
-- SEARCH_ENGINE: Explicit command to CHANGE OR SET the browser's default search engine setting (e.g., "change search engine to Google", "set default search to DuckDuckGo").
+- SEARCH_ENGINE: Explicit command to CHANGE OR SET the browser's default search engine setting.
 - BOOKMARK: Explicit command to save/add the current page or a URL to bookmarks.
 - REMOVE_BOOKMARK: Explicit command to remove/delete a bookmark.
 - SCALE: Explicit command to change font size, UI scale, or zoom scale (0 to 5).
@@ -129,16 +124,10 @@ Analyze the user's latest request in the context of the conversation history and
 - PASSWORDS: Explicit command to enable or disable password saving settings (true/false).
 - DEVELOPER_SETTINGS: Explicit command to toggle developer mode / Eruda console (true/false).
 - VPN: Explicit command to change VPN protection mode (off, default, or family).
-- TEXT: ANY general question, factual inquiry, conversation, search query, or topic lookup (e.g., "Which countries have mandatory military service?", "Search for local weather", "Who founded Google?", "What is Java?").
+- TEXT: ANY general question, factual inquiry, conversation, search query, or topic lookup.`;
 
-CRITICAL CLASSIFICATION RULES:
-1. Default to TEXT for all general queries, questions, information requests, or discussions, EVEN IF they mention search engines, websites, tech terms, or browser features.
-2. ONLY select a setting decision (SEARCH_ENGINE, THEME, JAVASCRIPT, etc.) if the user is explicitly ordering an ACTION to modify/change a browser configuration setting.
-3. Informational questions like "What is the best search engine?" or "Which countries have conscription?" MUST BE CLASSIFIED AS "TEXT".`;
-
-// Όρια Timeout
-const GOOGLE_TIMEOUT_MS = 10000; // 10s για Router & UI Settings
-const CHAT_TIMEOUT_MS = 45000; // 45s για Web Search & Video Analysis
+const GOOGLE_TIMEOUT_MS = 10000;
+const CHAT_TIMEOUT_MS = 45000;
 
 const withTimeout = (promise, ms = GOOGLE_TIMEOUT_MS) => {
 	return Promise.race([
@@ -147,20 +136,21 @@ const withTimeout = (promise, ms = GOOGLE_TIMEOUT_MS) => {
 	]);
 };
 
-// Helper to wrap object property schemas correctly for SDK
 const buildSchema = (properties, requiredKeys = []) => ({
 	type: Type.OBJECT,
 	properties: properties,
 	required: requiredKeys
 });
 
+// ----------------------------------------------------
+// OXYZEN BROWSER ENDPOINTS
+// ----------------------------------------------------
 app.post('/api/chat', async (req, res) => {
 	const {
 		prompt, images, mimeType, history, aspectRatio
 	} = req.body;
 
 	try {
-		// Μετατροπή και εξασφάλιση της δομής "parts" για όλα τα στοιχεία του history
 		const safeHistory = Array.isArray(history)
 		? history
 		.filter(item => item && item.role)
@@ -171,7 +161,6 @@ app.post('/api/chat', async (req, res) => {
 			}]
 		})): [];
 
-		// Επεξεργασία τυχόν YouTube link στο prompt μέσω Transcript API
 		const videoTranscript = await processYouTubeVideo(prompt);
 
 		let finalPrompt = prompt;
@@ -179,7 +168,6 @@ app.post('/api/chat', async (req, res) => {
 			finalPrompt = `${prompt}\n\n[YouTube Video Transcript]:\n${videoTranscript}`;
 		}
 
-		// 1. Router Call
 		const routerPromise = ai.models.generateContent({
 			model: ROUTER_MODEL,
 			contents: [
@@ -210,12 +198,11 @@ app.post('/api/chat', async (req, res) => {
 			decision = "TEXT";
 		}
 
-		// Αν βρέθηκε transcript, εξαναγκάζουμε την απόφαση σε TEXT για ανάλυση περιεχομένου
 		if (videoTranscript) {
 			decision = "TEXT";
 		}
 
-		// 2. Image Generation Branch
+		// IMAGE GENERATION
 		if (decision === "IMAGE") {
 			const contextChat = ai.chats.create({
 				model: ROUTER_MODEL,
@@ -269,7 +256,7 @@ app.post('/api/chat', async (req, res) => {
 				token: imgRes.usageMetadata?.totalTokenCount || 0
 			});
 
-			// 3. UI Settings Branch
+			// UI SETTINGS
 		} else if (["NAVIGATE", "THEME", "TOOLBAR", "SEARCH_ENGINE", "BOOKMARK", "REMOVE_BOOKMARK", "SCALE", "JAVASCRIPT", "COOKIES", "PASSWORDS", "DEVELOPER_SETTINGS", "VPN"].includes(decision)) {
 
 			let systemPrompt = "";
@@ -493,7 +480,7 @@ app.post('/api/chat', async (req, res) => {
 			token: uiRes.usageMetadata?.totalTokenCount || 0
 		});
 
-		// 4. Standard Chat, Search & Transcript Processing
+		// STANDARD CHAT & SEARCH
 	} else {
 		const chat = ai.chats.create({
 			model: CHAT_MODEL,
@@ -508,14 +495,11 @@ app.post('/api/chat', async (req, res) => {
 		});
 
 	const messageParts = [];
-
-	// Προσθήκη εικόνων αν υπάρχουν στο request
 	if (Array.isArray(images) && images.length > 0) {
 		images.forEach(imgBase64 => {
 			messageParts.push({
 				inlineData: {
-					data: imgBase64,
-					mimeType: mimeType || "image/jpeg"
+					data: imgBase64, mimeType: mimeType || "image/jpeg"
 				}
 			});
 		});
@@ -526,8 +510,8 @@ app.post('/api/chat', async (req, res) => {
 	const chatPromise = chat.sendMessage({
 		message: messageParts
 	});
-
 	const response = await withTimeout(chatPromise, CHAT_TIMEOUT_MS);
+
 	return res.json({
 		text: response.text,
 		token: response.usageMetadata?.totalTokenCount || 0
@@ -559,7 +543,6 @@ app.post('/api/chat', async (req, res) => {
 }
 });
 
-// Quiz Endpoint
 app.post('/api/quiz', async (req, res) => {
 const {
 prompt
@@ -618,26 +601,22 @@ app.get('/api/wakeup', (req, res) => res.status(200).json({
 status: "online"
 }));
 
-// TELEGRAM BOT (Full Capabilities, Admin Approval & Topic Broadcasts)
-
+// ----------------------------------------------------
+// TELEGRAM BOT (grammY)
+// ----------------------------------------------------
 const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
-
-// Χάρτης με τα ID των Topics του Supergroup (Αντικατάστησε τα IDs με τα δικά σου)
-const TOPIC_MAP = {
-ANNOUNCEMENTS: 2, // ID του Topic για Ανακοινώσεις
-UPDATES: 4, // ID του Topic για Updates/Features
-GENERAL: 1 // Default Main Topic
-};
-
-// Το Chat ID της ομάδας (Supergroup) στην οποία θα γίνονται οι αναδημοσιεύσεις
 const TARGET_GROUP_ID = process.env.TELEGRAM_TARGET_GROUP_ID;
+
+const TOPIC_MAP = {
+ANNOUNCEMENTS: 2,
+UPDATES: 4,
+GENERAL: 1
+};
 
 if (telegramToken) {
 const bot = new Bot(telegramToken);
 
-// ----------------------------------------------------
-// 1. INLINE KEYBOARD CALLBACKS (Approve / Reject)
-// ----------------------------------------------------
+// 1. INLINE KEYBOARD CALLBACKS (Approve / Reject Actions)
 bot.on('callback_query:data', async (ctx) => {
 const data = ctx.callbackQuery.data;
 
@@ -661,22 +640,14 @@ return;
 if (action === 'approve') {
 try {
 if (targetAction === 'kick') {
-await ctx.api.banChatMember({
-chat_id: chatId, user_id: targetUserId
-});
-await ctx.api.unbanChatMember({
-chat_id: chatId, user_id: targetUserId
-});
+await ctx.api.banChatMember(chatId, targetUserId);
+await ctx.api.unbanChatMember(chatId, targetUserId);
 await ctx.editMessageText("✅ User successfully kicked upon approval.");
 } else if (targetAction === 'ban') {
-await ctx.api.banChatMember({
-chat_id: chatId, user_id: targetUserId
-});
+await ctx.api.banChatMember(chatId, targetUserId);
 await ctx.editMessageText("✅ User successfully banned upon approval.");
 } else if (targetAction === 'del') {
-await ctx.api.deleteMessage({
-chat_id: chatId, message_id: targetMessageId
-});
+await ctx.api.deleteMessage(chatId, targetMessageId);
 await ctx.editMessageText("✅ Message successfully deleted upon approval.");
 }
 await ctx.answerCallbackQuery({
@@ -690,9 +661,7 @@ await ctx.editMessageText("⚠️ Failed to execute action (insufficient permiss
 }
 });
 
-// ----------------------------------------------------
-// 2. CHANNEL POSTS ROUTING (Owner Updates to Topics)
-// ----------------------------------------------------
+// 2. CHANNEL POSTS ROUTING
 bot.on('channel_post',
 async (ctx) => {
 const channelPost = ctx.channelPost;
@@ -701,7 +670,6 @@ const postText = channelPost?.text || channelPost?.caption || "";
 if (!postText || !TARGET_GROUP_ID) return;
 
 try {
-// Χρήση του Router για την επιλογή του κατάλληλου Topic
 const topicAnalysis = await withTimeout(
 ai.models.generateContent({
 model: ROUTER_MODEL,
@@ -711,7 +679,7 @@ text: `Categorize channel update: "${postText}"`
 }]
 }],
 config: {
-systemInstruction: `You are a content router for Telegram topics. Categorize the post into one of these keys: "ANNOUNCEMENTS", "UPDATES", or "GENERAL".
+systemInstruction: `Categorize the post into one key: "ANNOUNCEMENTS", "UPDATES", or "GENERAL".
 Return JSON format: { "topic": "ANNOUNCEMENTS" }`,
 responseMimeType: "application/json",
 temperature: 0.0
@@ -724,13 +692,14 @@ const result = JSON.parse(topicAnalysis.text);
 const selectedTopicKey = result?.topic?.toUpperCase() || "ANNOUNCEMENTS";
 const targetThreadId = TOPIC_MAP[selectedTopicKey] || TOPIC_MAP.GENERAL;
 
-// Αναδημοσίευση (Forward) του μηνύματος του ιδιοκτήτη στο σωστό Topic της ομάδας
-await ctx.api.forwardMessage({
-chat_id: TARGET_GROUP_ID,
-from_chat_id: channelPost.chat.id,
-message_id: channelPost.message_id,
+await ctx.api.forwardMessage(
+TARGET_GROUP_ID,
+channelPost.chat.id,
+channelPost.message_id,
+{
 message_thread_id: targetThreadId
-});
+}
+);
 
 console.log(`Forwarded channel post to topic thread ID: ${targetThreadId}`);
 } catch (err) {
@@ -738,9 +707,7 @@ console.error("Error forwarding channel post to topic:", err);
 }
 });
 
-// ----------------------------------------------------
-// 3. MAIN MESSAGE HANDLER (Group & Direct Messages)
-// ----------------------------------------------------
+// 3. MAIN MESSAGE HANDLER
 bot.on('message',
 async (ctx) => {
 const chatId = ctx.chat.id;
@@ -756,9 +723,7 @@ try {
 // ADMIN COMMANDS
 if (userPrompt.startsWith('/pin')) {
 if (replyToMessage) {
-await ctx.api.pinChatMessage({
-chat_id: chatId, message_id: replyToMessage.message_id
-});
+await ctx.api.pinChatMessage(chatId, replyToMessage.message_id);
 await ctx.reply("📌 Message pinned successfully.");
 } else {
 await ctx.reply("⚠️ Please reply to the message you want to pin using /pin.");
@@ -768,14 +733,10 @@ return;
 
 if (userPrompt.startsWith('/unpin')) {
 if (replyToMessage) {
-await ctx.api.unpinChatMessage({
-chat_id: chatId, message_id: replyToMessage.message_id
-});
+await ctx.api.unpinChatMessage(chatId, replyToMessage.message_id);
 await ctx.reply("📌 Message unpinned.");
 } else {
-await ctx.api.unpinAllChatMessages({
-chat_id: chatId
-});
+await ctx.api.unpinAllChatMessages(chatId);
 await ctx.reply("📌 All messages unpinned.");
 }
 return;
@@ -793,13 +754,8 @@ text: `Analyze message for moderation: "${userPrompt}"`
 }]
 }],
 config: {
-systemInstruction: `You are an automated group moderator. Analyze the message for rule violations (spam, severe toxicity, unauthorized ads, explicit hate speech).
-Return JSON with format:
-{
-"violation": true/false,
-"reason": "short explanation",
-"recommendedAction": "DELETE" or "KICK" or "BAN" or "NONE"
-}`,
+systemInstruction: `Analyze the message for rule violations (spam, severe toxicity, unauthorized ads, hate speech).
+Return JSON format: { "violation": true/false, "reason": "short explanation", "recommendedAction": "DELETE" or "KICK" or "BAN" or "NONE" }`,
 responseMimeType: "application/json",
 temperature: 0.0
 }
@@ -839,18 +795,14 @@ console.error("Moderation check failed:", modErr);
 }
 
 // STANDARD ZEN AI & ROUTING LOGIC
-await ctx.api.sendChatAction({
-chat_id: chatId, action: 'typing'
-});
+await ctx.replyWithChatAction('typing');
 
 let imagesPayload = [];
 let mimeType = "image/jpeg";
 
 if (photo && photo.length > 0) {
 const highestResPhoto = photo[photo.length - 1];
-const fileInfo = await ctx.api.getFile({
-file_id: highestResPhoto.file_id
-});
+const fileInfo = await ctx.api.getFile(highestResPhoto.file_id);
 const fileUrl = `https://api.telegram.org/file/bot${telegramToken}/${fileInfo.file_path}`;
 
 const responseImg = await fetch(fileUrl);
@@ -897,9 +849,7 @@ decision = "TEXT";
 }
 
 if (decision === "IMAGE") {
-await ctx.api.sendChatAction({
-chat_id: chatId, action: 'upload_photo'
-});
+await ctx.replyWithChatAction('upload_photo');
 
 const imgRes = await withTimeout(
 ai.models.generateContent({
@@ -932,13 +882,12 @@ const generatedImage = parts.find(p => p.inlineData);
 
 if (generatedImage) {
 const imgBuffer = Buffer.from(generatedImage.inlineData.data, 'base64');
-await ctx.api.sendPhoto({
-chat_id: chatId,
-photo: new InputFile(imgBuffer, {
-filename: "generated.jpg"
-}),
+await ctx.replyWithPhoto(
+new InputFile(imgBuffer, "generated.jpg"),
+{
 caption: "🎨 Here is your generated image by Zen!"
-});
+}
+);
 return;
 }
 }
@@ -989,28 +938,29 @@ await ctx.reply("⚠️ An error occurred while processing your request.");
 }
 });
 
-bot.catch((err) => console.error("Telegram error:", err));
+bot.catch((err) => console.error("Telegram Runner Error:", err.message));
 
 run(bot);
-console.log("Telegram Bot initialized with Channel Broadcasts & Topics routing.");
+console.log("Telegram Bot initialized with grammY Runner & Topic Broadcasts.");
 } else {
 console.log("TELEGRAM_BOT_TOKEN is missing in environment variables.");
 }
 
-// GITHUB WEBHOOK HANDLER (Broadcast to Telegram Topics)
+// ----------------------------------------------------
+// GITHUB WEBHOOK HANDLER
+// ----------------------------------------------------
 app.post('/api/github-webhook', async (req, res) => {
 const event = req.headers['x-github-event'];
 const payload = req.body;
 
 if (!payload || !process.env.TELEGRAM_TARGET_GROUP_ID) {
-return res.status(400).send('Missing payload or Telegram configuration.');
+return res.status(400).send('Missing payload or Telegram target group configuration.');
 }
 
 try {
 let messageText = "";
 let category = "UPDATES";
 
-// 1. Νέο Release (π.χ. OxyZen Browser v2.0)
 if (event === 'release' && payload.action === 'published') {
 category = "ANNOUNCEMENTS";
 messageText = `🚀 **New Release Published!**\n\n` +
@@ -1019,9 +969,7 @@ messageText = `🚀 **New Release Published!**\n\n` +
 `• **Repository:** ${payload.repository.name}\n\n` +
 `${payload.release.body || ''}\n\n` +
 `🔗 [View Release](${payload.release.html_url})`;
-}
-// 2. Νέο Commit στο main/master branch
-else if (event === 'push') {
+} else if (event === 'push') {
 category = "UPDATES";
 const commits = payload.commits || [];
 if (commits.length === 0) return res.status(200).send('No commits found.');
@@ -1032,9 +980,7 @@ messageText = `🔨 **New Commit(s) Pushed!**\n\n` +
 `• **Branch:** ${payload.ref.replace('refs/heads/', '')}\n\n` +
 `${commitMessages}\n\n` +
 `🔗 [Compare Changes](${payload.compare})`;
-}
-// 3. Νέο Issue ή Pull Request
-else if (event === 'issues' && payload.action === 'opened') {
+} else if (event === 'issues' && payload.action === 'opened') {
 category = "GENERAL";
 messageText = `🐛 **New Issue Opened**\n\n` +
 `• **Title:** ${payload.issue.title}\n` +
@@ -1042,17 +988,19 @@ messageText = `🐛 **New Issue Opened**\n\n` +
 `🔗 [View Issue](${payload.issue.html_url})`;
 }
 
-if (messageText) {
+if (messageText && telegramToken) {
 const targetThreadId = TOPIC_MAP[category] || TOPIC_MAP.GENERAL;
+const bot = new Bot(telegramToken);
 
-// Αποστολή του μηνύματος στο συγκεκριμένο Topic της ομάδας
 await bot.api.sendMessage(
 process.env.TELEGRAM_TARGET_GROUP_ID,
 messageText,
 {
 message_thread_id: targetThreadId,
 parse_mode: 'Markdown',
-disable_web_page_preview: true
+link_preview_options: {
+is_disabled: true
+}
 }
 );
 }
