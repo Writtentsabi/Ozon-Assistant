@@ -608,8 +608,8 @@ const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
 const TARGET_GROUP_ID = process.env.TELEGRAM_TARGET_GROUP_ID;
 
 const TOPIC_MAP = {
-ANNOUNCEMENTS: 2,
-UPDATES: 4,
+ANNOUNCEMENTS: 11,
+UPDATES: 16,
 GENERAL: 1
 };
 
