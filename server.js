@@ -719,8 +719,19 @@ const sender = ctx.message?.from;
 
 if (!userPrompt && !photo) return;
 
-try {
-// ADMIN COMMANDS
+// ----------------------------------------------------
+// ΕΛΕΓΧΟΣ: Απαντάει ΜΟΝΟ αν του απευθύνονται
+// ----------------------------------------------------
+const botUsername = ctx.me.username; // Το username του bot
+const isPrivateChat = ctx.chat.type === 'private'; // Σε private chat απαντάει πάντα
+const isReplyToBot = replyToMessage && replyToMessage.from?.id === ctx.me.id; // Reply σε μήνυμα του bot
+const isMentioned = userPrompt.includes(`@${botUsername}`); // Mention με @botusername
+
+// Αν ΔΕΝ είναι προσωπικό τσατ, ΔΕΝ είναι reply στο bot και ΔΕΝ το έκαναν mention:
+// Αφήνουμε ΜΟΝΟ το auto-moderation να τρέξει (αν θέλουμε), αλλά ΔΕΝ παράγουμε AI απάντηση!
+const isDirectlyAddressed = isPrivateChat || isReplyToBot || isMentioned;
+
+// ADMIN COMMANDS (π.χ. /pin, /unpin)
 if (userPrompt.startsWith('/pin')) {
 if (replyToMessage) {
 await ctx.api.pinChatMessage(chatId, replyToMessage.message_id);
@@ -742,7 +753,7 @@ await ctx.reply("📌 All messages unpinned.");
 return;
 }
 
-// AUTO-MODERATION WITH APPROVAL SYSTEM
+// AUTO-MODERATION WITH APPROVAL SYSTEM (Τρέχει για OLA τα μηνύματα)
 if (userPrompt.length > 0 && !userPrompt.startsWith('/')) {
 try {
 const modCheck = await withTimeout(
@@ -793,6 +804,19 @@ return;
 console.error("Moderation check failed:", modErr);
 }
 }
+
+// ----------------------------------------------------
+// ΣΤΑΜΑΤΑΕΙ ΕΔΩ αν δεν απευθύνθηκαν στο bot!
+// ----------------------------------------------------
+if (!isDirectlyAddressed) {
+return;
+}
+
+// Καθαρίζουμε το @botusername από το prompt για να μην μπερδεύεται το AI
+const cleanPrompt = userPrompt.replace(`@${botUsername}`, '').trim();
+
+// STANDARD ZEN AI & ROUTING LOGIC... (συνεχίζει κανονικά ο κώδικάς σου)
+
 
 // STANDARD ZEN AI & ROUTING LOGIC
 await ctx.replyWithChatAction('typing');
