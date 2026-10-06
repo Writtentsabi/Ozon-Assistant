@@ -613,6 +613,10 @@ UPDATES: 16,
 GENERAL: 1
 };
 
+// Αποθήκευση ιστορικού συνομιλίας ανά Chat/Topic ID στη μνήμη
+const chatHistories = new Map();
+const MAX_HISTORY_LENGTH = 10;
+
 if (telegramToken) {
 const bot = new Bot(telegramToken);
 
@@ -711,6 +715,7 @@ console.error("Error forwarding channel post to topic:", err);
 bot.on('message',
 async (ctx) => {
 const chatId = ctx.chat.id;
+const threadId = ctx.message?.message_thread_id || 1;
 const userPrompt = ctx.message?.text || ctx.message?.caption || "";
 const photo = ctx.message?.photo;
 const messageId = ctx.message?.message_id;
@@ -719,15 +724,15 @@ const sender = ctx.message?.from;
 
 if (!userPrompt && !photo) return;
 
-// ----------------------------------------------------
-// ΕΛΕΓΧΟΣ: Απαντάει ΜΟΝΟ αν του απευθύνονται
-// ----------------------------------------------------
 const botUsername = ctx.me.username;
 const isPrivateChat = ctx.chat.type === 'private';
 const isReplyToBot = replyToMessage && replyToMessage.from?.id === ctx.me.id;
 const isMentioned = userPrompt.includes(`@${botUsername}`);
-
 const isDirectlyAddressed = isPrivateChat || isReplyToBot || isMentioned;
+
+// Δημιουργία μοναδικού Key για κάθε Topic ή Private Chat
+const historyKey = isPrivateChat ? `user_${chatId}`: `group_${chatId}_topic_${threadId}`;
+let conversationHistory = chatHistories.get(historyKey) || [];
 
 try {
 // ADMIN COMMANDS
@@ -736,7 +741,7 @@ if (replyToMessage) {
 await ctx.api.pinChatMessage(chatId, replyToMessage.message_id);
 await ctx.reply("📌 Message pinned successfully.");
 } else {
-await ctx.reply("⚠️️ Please reply to the message you want to pin using /pin.");
+await ctx.reply("⚠ Please reply to the message you want to pin using /pin.");
 }
 return;
 }
@@ -804,16 +809,12 @@ console.error("Moderation check failed:", modErr);
 }
 }
 
-// ----------------------------------------------------
-// ΣΤΑΜΑΤΑΕΙ ΕΔΩ αν δεν απευθύνθηκαν στο bot!
-// ----------------------------------------------------
+// Σταματάει αν δεν απευθύνθηκαν στο bot
 if (!isDirectlyAddressed) {
 return;
 }
 
 const cleanPrompt = userPrompt.replace(`@${botUsername}`, '').trim();
-
-// STANDARD ZEN AI & ROUTING LOGIC
 await ctx.replyWithChatAction('typing');
 
 let imagesPayload = [];
@@ -912,8 +913,10 @@ return;
 }
 }
 
+// GEMINI CHAT ΜΕ ΠΕΡΑΣΜΕΝΟ ΤΟ TOPIC HISTORY
 const chat = ai.chats.create({
 model: CHAT_MODEL,
+history: conversationHistory,
 config: {
 systemInstruction: `Your name is Zen, you are the personal assistant for OxyZen and community manager.
 CORE RULES:
@@ -950,6 +953,26 @@ let cleanResponse = response.text
 
 if (!cleanResponse) cleanResponse = response.text;
 
+// ΕΝΗΜΕΡΩΣΗ ΙΣΤΟΡΙΚΟΥ TOPIC
+conversationHistory.push({
+role: 'user',
+parts: [{
+text: promptForAi
+}]
+});
+conversationHistory.push({
+role: 'model',
+parts: [{
+text: cleanResponse
+}]
+});
+
+if (conversationHistory.length > MAX_HISTORY_LENGTH) {
+conversationHistory = conversationHistory.slice(-MAX_HISTORY_LENGTH);
+}
+
+chatHistories.set(historyKey, conversationHistory);
+
 await ctx.reply(cleanResponse);
 
 } catch (error) {
@@ -958,11 +981,10 @@ await ctx.reply("⚠️ An error occurred while processing your request.");
 }
 });
 
-
 bot.catch((err) => console.error("Telegram Runner Error:", err.message));
 
 run(bot);
-console.log("Telegram Bot initialized with grammY Runner & Topic Broadcasts.");
+console.log("Telegram Bot initialized with grammY Runner, Topic Broadcasts & Per-Topic History.");
 } else {
 console.log("TELEGRAM_BOT_TOKEN is missing in environment variables.");
 }
