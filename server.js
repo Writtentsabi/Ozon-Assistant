@@ -18,11 +18,9 @@ import PaxSenixAI from '@paxsenix/ai';
 import {
 	Bot,
 	InputFile,
-	InlineKeyboard
+	InlineKeyboard,
+	webhookCallback
 } from 'grammy';
-import {
-	run
-} from '@grammyjs/runner';
 import {
 	EdgeTTS
 } from 'node-edge-tts';
@@ -62,13 +60,11 @@ async function fetchLatestReleaseNotes() {
 	const packageName = process.env.PACKAGE_NAME || 'oxy.ozon.browser';
 	const androidpublisher = getAndroidPublisherClient();
 
-	// 1. Δημιουργία Edit Session
 	const editRes = await androidpublisher.edits.insert({
 		packageName
 	});
 	const editId = editRes.data.id;
 
-	// 2. Λήψη Production Track
 	const tracksRes = await androidpublisher.edits.tracks.get({
 		packageName,
 		editId,
@@ -79,17 +75,16 @@ async function fetchLatestReleaseNotes() {
 	if (!releases || releases.length === 0) {
 		return {
 			success: false,
-			message: 'Δεν βρέθηκαν διαθέσιμες κυκλοφορίες (releases).'
+			message: 'There are no available releases.'
 		};
 	}
 
 	const latestRelease = releases[0];
-	const versionName = latestRelease.name || 'Νέα έκδοση';
+	const versionName = latestRelease.name || 'New Version';
 	const releaseNotesList = latestRelease.releaseNotes || [];
 
-	// Αναζήτηση για τα ελληνικά release notes (el-GR)
 	let greekNotes = releaseNotesList.find(note => note.language === 'el-GR' || note.language === 'el');
-	const notesText = greekNotes ? greekNotes.text: (releaseNotesList[0]?.text || 'Δεν περιλαμβάνονται σημειώσεις έκδοσης.');
+	const notesText = greekNotes ? greekNotes.text: (releaseNotesList[0]?.text || 'Ther are no release Notes available.');
 
 	return {
 		success: true,
@@ -190,6 +185,7 @@ Analyze the user's latest request in the context of the conversation history and
 - PASSWORDS: Explicit command to enable or disable password saving settings (true/false).
 - DEVELOPER_SETTINGS: Explicit command to toggle developer mode / Eruda console (true/false).
 - VPN: Explicit command to change VPN protection mode (off, default, or family).
+- VISUAL: Explicit command to change the visual presentation of tabs and bookmarks (cards, titles).
 - TEXT: ANY general question, factual inquiry, conversation, search query, or topic lookup.`;
 
 const GOOGLE_TIMEOUT_MS = 10000;
@@ -287,7 +283,6 @@ app.post('/api/chat', async (req, res) => {
 			decision = "TEXT";
 		}
 
-		// IMAGE GENERATION
 		if (decision === "IMAGE") {
 			const contextChat = ai.chats.create({
 				model: ROUTER_MODEL,
@@ -343,7 +338,6 @@ app.post('/api/chat', async (req, res) => {
 				token: imgRes.usageMetadata?.totalTokenCount || 0
 			});
 
-			// UI SETTINGS
 		} else if (["NAVIGATE", "THEME", "TOOLBAR", "SEARCH_ENGINE", "BOOKMARK", "REMOVE_BOOKMARK", "SCALE", "JAVASCRIPT", "COOKIES", "PASSWORDS", "DEVELOPER_SETTINGS", "VPN"].includes(decision)) {
 
 			let systemPrompt = "";
@@ -365,8 +359,7 @@ app.post('/api/chat', async (req, res) => {
 							type: Type.STRING,
 							enum: ["dark",
 								"light",
-								"system"
-							]
+								"system"]
 						}
 					};
 					break;
@@ -376,8 +369,7 @@ app.post('/api/chat', async (req, res) => {
 						action: {
 							type: Type.STRING,
 							enum: ["top",
-								"bottom"
-							]
+								"bottom"]
 						}
 					};
 					break;
@@ -458,8 +450,17 @@ app.post('/api/chat', async (req, res) => {
 							type: Type.STRING,
 							enum: ["off",
 								"default",
-								"family"
-							]
+								"family"]
+						}
+					};
+					break;
+				case "VISUAL":
+					systemPrompt = "Extract list visual mode (cards,titles).";
+					props = {
+						visual = {
+							type: Type.STRING,
+							enum: ["cards",
+								"titles"]
 						}
 					};
 					break;
@@ -564,6 +565,13 @@ app.post('/api/chat', async (req, res) => {
 				data: JSON.stringify({
 					setVPN: parsed.vpn
 				})
+			},
+			VISUAL: {
+				text: `<div class="thought">Zen Settings...</div><p>VPN set to <strong>${parsed.vpn}</strong>.</p>`,
+				function: "VISUAL",
+				data: JSON.stringify({
+					setVisual: parsed.visual
+				})
 			}
 		};
 
@@ -572,7 +580,6 @@ app.post('/api/chat', async (req, res) => {
 			token: uiRes.usageMetadata?.totalTokenCount || 0
 		});
 
-		// STANDARD CHAT & SEARCH
 	} else {
 		const chat = ai.chats.create({
 			model: CHAT_MODEL,
@@ -665,8 +672,7 @@ type: Type.STRING,
 enum: ["answer1",
 "answer2",
 "answer3",
-"answer4"
-]
+"answer4"]
 }
 };
 
@@ -698,7 +704,7 @@ app.get('/api/wakeup', (req, res) => res.status(200).json({
 status: "online"
 }));
 
-// TELEGRAM BOT (grammY)
+// TELEGRAM BOT (grammY WEBHOOK SETUP)
 const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
 const TARGET_GROUP_ID = process.env.TELEGRAM_TARGET_GROUP_ID;
 
@@ -723,8 +729,7 @@ const [action,
 targetAction,
 chatId,
 userIdStr,
-messageIdStr
-] = data.split('_');
+messageIdStr] = data.split('_');
 const targetUserId = parseInt(userIdStr);
 const targetMessageId = parseInt(messageIdStr);
 
@@ -829,7 +834,6 @@ const historyKey = isPrivateChat ? `user_${chatId}`: `group_${chatId}_topic_${th
 let conversationHistory = chatHistories.get(historyKey) || [];
 
 try {
-// ADMIN COMMANDS
 if (userPrompt.startsWith('/pin')) {
 if (replyToMessage) {
 await ctx.api.pinChatMessage(chatId, replyToMessage.message_id);
@@ -851,7 +855,6 @@ await ctx.reply("📌 All messages unpinned.");
 return;
 }
 
-// BOT COMMAND: CHECK PLAY STORE RELEASE & AUTO-PIN
 if (userPrompt.startsWith('/release') || userPrompt.startsWith('/update')) {
 await ctx.replyWithChatAction('typing');
 try {
@@ -868,17 +871,15 @@ const sentMsg = await ctx.reply(releaseMsg, {
 parse_mode: 'Markdown'
 });
 
-// Αυτόματο pin του μηνύματος ενημέρωσης
 await ctx.api.pinChatMessage(chatId, sentMsg.message_id);
 
 } catch (relErr) {
 console.error("Release fetch error:", relErr);
-await ctx.reply("⚠️ Αποτυχία ανάκτησης release notes από το Play Store API.");
+await ctx.reply("⚠️ Failure atgetting  release notes from Play Store API.");
 }
 return;
 }
 
-// AUTO-MODERATION WITH APPROVAL SYSTEM
 if (userPrompt.length > 0 && !userPrompt.startsWith('/')) {
 try {
 const modCheck = await withTimeout(
@@ -1033,7 +1034,6 @@ return;
 }
 }
 
-// GEMINI CHAT
 const chat = ai.chats.create({
 model: CHAT_MODEL,
 history: conversationHistory,
@@ -1100,15 +1100,12 @@ await ctx.reply("⚠️ An error occurred while processing your request.");
 }
 });
 
-bot.catch((err) => console.error("Telegram Runner Error:", err.message));
+bot.catch((err) => console.error("Telegram Bot Error:", err.message));
 
-try {
-run(bot);
-console.log("Telegram Bot initialized with grammY Runner, Topic Broadcasts & Play Store Release Checker.");
-} catch (runnerErr) {
-console.error("Failed to start grammY runner:",
-runnerErr.message);
-}
+// Express Webhook Route για το Telegram (αντί για run/polling)
+app.use(`/api/telegram/${telegramToken}`,
+webhookCallback(bot, 'express'));
+console.log(`Telegram Bot configured for Webhook mode at /api/telegram/${telegramToken}`);
 } else {
 console.log("TELEGRAM_BOT_TOKEN is missing in environment variables.");
 }
@@ -1178,7 +1175,6 @@ return res.status(500).send('Internal Server Error');
 }
 });
 
-// Δημιουργία φακέλου cache στο temp directory του συστήματος
 const ttsCacheDir = path.join(os.tmpdir(), 'oxyzen_tts_cache');
 if (!fs.existsSync(ttsCacheDir)) {
 try {
@@ -1204,13 +1200,10 @@ error: "Missing text parameter"
 
 try {
 const selectedVoice = voice || 'el-GR-NestorNeural';
-
-// Δημιουργία μοναδικού hash (md5 μέσω crypto) βάσει κειμένου και φωνής για το αρχείο cache
 const hashInput = `${selectedVoice}_${text}`;
 const textHash = crypto.createHash('md5').update(hashInput).digest('hex');
 const cachedFilePath = path.join(ttsCacheDir, `${textHash}.mp3`);
 
-// 1. Αν υπάρχει ήδη στη cache, στέλνεσαι αμέσως χωρίς καμία καθυστέρηση / timeout
 if (fs.existsSync(cachedFilePath)) {
 const cachedBuffer = fs.readFileSync(cachedFilePath);
 res.set({
@@ -1220,7 +1213,6 @@ res.set({
 return res.send(cachedBuffer);
 }
 
-// 2. Αν δεν υπάρχει, το παράγουμε μέσω Edge TTS
 const tts = new EdgeTTS( {
 voice: selectedVoice,
 outputFormat: 'audio-24khz-48kbitrate-mono-mp3'
