@@ -26,7 +26,6 @@ import {
 	EdgeTTS
 } from 'node-edge-tts';
 
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
@@ -53,7 +52,8 @@ function getAndroidPublisherClient() {
 	});
 
 	return google.androidpublisher({
-		version: 'v3', auth
+		version: 'v3',
+		auth
 	});
 }
 
@@ -835,7 +835,7 @@ await ctx.reply("📌 All messages unpinned.");
 return;
 }
 
-// BOT COMMAND: CHECK PLAY STORE RELEASE
+// BOT COMMAND: CHECK PLAY STORE RELEASE & AUTO-PIN
 if (userPrompt.startsWith('/release') || userPrompt.startsWith('/update')) {
 await ctx.replyWithChatAction('typing');
 try {
@@ -847,9 +847,14 @@ return;
 const releaseMsg = `🚀 *Νέα Update for OxyZen Browser!*\n\n` +
 `📌 *Version:* ${releaseData.versionName}\n` +
 `📝 *Release Notes:*\n${releaseData.notes}`;
-await ctx.reply(releaseMsg, {
+
+const sentMsg = await ctx.reply(releaseMsg, {
 parse_mode: 'Markdown'
 });
+
+// Αυτόματο pin του μηνύματος ενημέρωσης
+await ctx.api.pinChatMessage(chatId, sentMsg.message_id);
+
 } catch (relErr) {
 console.error("Release fetch error:", relErr);
 await ctx.reply("⚠️ Αποτυχία ανάκτησης release notes από το Play Store API.");
