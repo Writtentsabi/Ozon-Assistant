@@ -1162,7 +1162,8 @@ error: "Missing text parameter"
 
 try {
 const selectedVoice = voice || 'el-GR-NestorNeural';
-const outputPath = path.join(__dirname, `temp_${Date.now()}.mp3`);
+// Χρήση του os.tmpdir() αντί για __dirname
+const outputPath = path.join(os.tmpdir(), `temp_${Date.now()}.mp3`);
 
 const tts = new EdgeTTS( {
 voice: selectedVoice,
