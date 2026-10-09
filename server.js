@@ -3,6 +3,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import crypto from 'crypto';
 import {
 	google
 } from 'googleapis';
@@ -25,7 +26,6 @@ import {
 import {
 	EdgeTTS
 } from 'node-edge-tts';
-import crypto from 'crypto';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -234,8 +234,8 @@ app.post('/api/chat', async (req, res) => {
 	} = req.body;
 
 	try {
-		const safeHistory = Array.isArray(history)
-		? history
+		const safeHistory = Array.isArray(history) ?
+		history
 		.filter(item => item && item.role)
 		.map(item => ({
 			role: item.role === 'assistant' ? 'model': item.role,
@@ -256,7 +256,8 @@ app.post('/api/chat', async (req, res) => {
 			contents: [
 				...safeHistory,
 				{
-					role: "user", parts: [{
+					role: "user",
+					parts: [{
 						text: `Analyze user intent: "${prompt}"`
 					}]
 				}],
@@ -265,7 +266,8 @@ app.post('/api/chat', async (req, res) => {
 				responseMimeType: "application/json",
 				responseSchema: buildSchema( {
 					decision: {
-						type: Type.STRING, description: "Classification keyword."
+						type: Type.STRING,
+						description: "Classification keyword."
 					}
 				}, ["decision"]),
 				temperature: 0.0
@@ -306,7 +308,8 @@ app.post('/api/chat', async (req, res) => {
 				images.forEach(imgBase64 => {
 					currentParts.push({
 						inlineData: {
-							data: imgBase64, mimeType: mimeType || "image/jpeg"
+							data: imgBase64,
+							mimeType: mimeType || "image/jpeg"
 						}
 					});
 				});
@@ -315,7 +318,8 @@ app.post('/api/chat', async (req, res) => {
 			const imgRes = await withTimeout(ai.models.generateContent({
 				model: IMAGE_MODEL,
 				contents: [{
-					role: "user", parts: currentParts
+					role: "user",
+					parts: currentParts
 				}],
 				config: {
 					responseModalities: ['IMAGE'],
@@ -361,7 +365,8 @@ app.post('/api/chat', async (req, res) => {
 							type: Type.STRING,
 							enum: ["dark",
 								"light",
-								"system"]
+								"system"
+							]
 						}
 					};
 					break;
@@ -371,7 +376,8 @@ app.post('/api/chat', async (req, res) => {
 						action: {
 							type: Type.STRING,
 							enum: ["top",
-								"bottom"]
+								"bottom"
+							]
 						}
 					};
 					break;
@@ -452,7 +458,8 @@ app.post('/api/chat', async (req, res) => {
 							type: Type.STRING,
 							enum: ["off",
 								"default",
-								"family"]
+								"family"
+							]
 						}
 					};
 					break;
@@ -497,14 +504,16 @@ app.post('/api/chat', async (req, res) => {
 				text: `<div class="thought">Zen Settings...</div><p>Default engine set to <strong>${parsed.engine}</strong>.</p>`,
 				function: "SEARCH_ENGINE",
 				data: JSON.stringify({
-					setSearchEngine: parsed.engine, searchUrlTemplate: parsed.searchUrl
+					setSearchEngine: parsed.engine,
+					searchUrlTemplate: parsed.searchUrl
 				})
 			},
 			BOOKMARK: {
 				text: `<div class="thought">Zen Bookmarks...</div><p>Added <strong>${parsed.title}</strong> to Bookmarks.</p>`,
 				function: "BOOKMARK",
 				data: JSON.stringify({
-					title: parsed.title, url: parsed.url
+					title: parsed.title,
+					url: parsed.url
 				})
 			},
 			REMOVE_BOOKMARK: {
@@ -582,7 +591,8 @@ app.post('/api/chat', async (req, res) => {
 		images.forEach(imgBase64 => {
 			messageParts.push({
 				inlineData: {
-					data: imgBase64, mimeType: mimeType || "image/jpeg"
+					data: imgBase64,
+					mimeType: mimeType || "image/jpeg"
 				}
 			});
 		});
@@ -606,10 +616,12 @@ app.post('/api/chat', async (req, res) => {
 		const paxResponse = await paxsenix.createChatCompletion({
 			model: 'gpt-4o-mini',
 			messages: [{
-				role: 'system', content: SYSTEM_INSTRUCTION
+				role: 'system',
+				content: SYSTEM_INSTRUCTION
 		},
 			{
-				role: 'user', content: prompt
+				role: 'user',
+				content: prompt
 			}]
 		});
 
@@ -653,7 +665,8 @@ type: Type.STRING,
 enum: ["answer1",
 "answer2",
 "answer3",
-"answer4"]
+"answer4"
+]
 }
 };
 
@@ -675,7 +688,8 @@ const parsed = JSON.parse(uiResponse.text);
 return res.json(parsed);
 } catch (error) {
 return res.status(500).json({
-error: "Failed to generate quiz.", details: error.message
+error: "Failed to generate quiz.",
+details: error.message
 });
 }
 });
@@ -709,7 +723,8 @@ const [action,
 targetAction,
 chatId,
 userIdStr,
-messageIdStr] = data.split('_');
+messageIdStr
+] = data.split('_');
 const targetUserId = parseInt(userIdStr);
 const targetMessageId = parseInt(messageIdStr);
 
@@ -758,7 +773,8 @@ const topicAnalysis = await withTimeout(
 ai.models.generateContent({
 model: ROUTER_MODEL,
 contents: [{
-role: "user", parts: [{
+role: "user",
+parts: [{
 text: `Categorize channel update: "${postText}"`
 }]
 }],
@@ -779,8 +795,7 @@ const targetThreadId = TOPIC_MAP[selectedTopicKey] || TOPIC_MAP.GENERAL;
 await ctx.api.forwardMessage(
 TARGET_GROUP_ID,
 channelPost.chat.id,
-channelPost.message_id,
-{
+channelPost.message_id, {
 message_thread_id: targetThreadId
 }
 );
@@ -870,7 +885,8 @@ const modCheck = await withTimeout(
 ai.models.generateContent({
 model: ROUTER_MODEL,
 contents: [{
-role: "user", parts: [{
+role: "user",
+parts: [{
 text: `Analyze message for moderation: "${userPrompt}"`
 }]
 }],
@@ -903,9 +919,9 @@ await ctx.reply(
 `• **User:** ${sender.first_name} (@${sender.username || 'N/A'})\n` +
 `• **Reason:** ${modResult.reason}\n` +
 `• **Suggested Action:** ${modResult.recommendedAction}\n\n` +
-`*Admin approval required to execute:*`,
-{
-reply_markup: keyboard, parse_mode: "Markdown"
+`*Admin approval required to execute:*`, {
+reply_markup: keyboard,
+parse_mode: "Markdown"
 }
 );
 return;
@@ -948,7 +964,8 @@ const routerResponse = await withTimeout(
 ai.models.generateContent({
 model: ROUTER_MODEL,
 contents: [{
-role: "user", parts: [{
+role: "user",
+parts: [{
 text: `Analyze user intent: "${promptForAi}"`
 }]
 }],
@@ -985,7 +1002,8 @@ text: promptForAi
 },
 ...imagesPayload.map(img => ({
 inlineData: {
-data: img, mimeType
+data: img,
+mimeType
 }
 }))
 ]
@@ -1007,8 +1025,7 @@ const generatedImage = parts.find(p => p.inlineData);
 if (generatedImage) {
 const imgBuffer = Buffer.from(generatedImage.inlineData.data, 'base64');
 await ctx.replyWithPhoto(
-new InputFile(imgBuffer, "generated.jpg"),
-{
+new InputFile(imgBuffer, "generated.jpg"), {
 caption: "🎨 Here is your generated image by Zen!"
 }
 );
@@ -1038,7 +1055,8 @@ if (imagesPayload.length > 0) {
 imagesPayload.forEach(imgBase64 => {
 messageParts.push({
 inlineData: {
-data: imgBase64, mimeType
+data: imgBase64,
+mimeType
 }
 });
 });
@@ -1057,12 +1075,14 @@ let cleanResponse = response.text
 if (!cleanResponse) cleanResponse = response.text;
 
 conversationHistory.push({
-role: 'user', parts: [{
+role: 'user',
+parts: [{
 text: promptForAi
 }]
 });
 conversationHistory.push({
-role: 'model', parts: [{
+role: 'model',
+parts: [{
 text: cleanResponse
 }]
 });
@@ -1082,8 +1102,13 @@ await ctx.reply("⚠️ An error occurred while processing your request.");
 
 bot.catch((err) => console.error("Telegram Runner Error:", err.message));
 
+try {
 run(bot);
 console.log("Telegram Bot initialized with grammY Runner, Topic Broadcasts & Play Store Release Checker.");
+} catch (runnerErr) {
+console.error("Failed to start grammY runner:",
+runnerErr.message);
+}
 } else {
 console.log("TELEGRAM_BOT_TOKEN is missing in environment variables.");
 }
@@ -1136,8 +1161,7 @@ const bot = new Bot(telegramToken);
 
 await bot.api.sendMessage(
 process.env.TELEGRAM_TARGET_GROUP_ID,
-messageText,
-{
+messageText, {
 message_thread_id: targetThreadId,
 parse_mode: 'Markdown',
 link_preview_options: {
