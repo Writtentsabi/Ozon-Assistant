@@ -58,7 +58,7 @@ function getAndroidPublisherClient() {
 }
 
 async function fetchLatestReleaseNotes() {
-	const packageName = process.env.PACKAGE_NAME || 'com.oxyzen.browser';
+	const packageName = process.env.PACKAGE_NAME || 'oxy.ozon.browser';
 	const androidpublisher = getAndroidPublisherClient();
 
 	// 1. Δημιουργία Edit Session
