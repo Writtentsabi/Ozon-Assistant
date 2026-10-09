@@ -1162,17 +1162,20 @@ error: "Missing text parameter"
 }
 
 try {
-const selectedVoice = voice || 'el-GR-NestorNeural';
+// Αν δεν δώσεις voice, ελέγχουμε αν το κείμενο είναι ελληνικά ή αγγλικά
+let selectedVoice = voice;
+if (!selectedVoice) {
+const isGreek = /[Α-Ωα-ωίόήάέύώϊϋΐΰΏΊΌΉΆΈΎΏΙΫ]/.test(text);
+selectedVoice = isGreek ? 'el-GR-NestorNeural': 'en-US-AriaNeural';
+}
 
-// Αρχικοποίηση του EdgeTTS
 const tts = new EdgeTTS( {
 voice: selectedVoice,
-lang: 'el-GR',
 outputFormat: 'audio-24khz-48kbitrate-mono-mp3'
 });
 
-// Παραγωγή του audio buffer
-const audioBuffer = await tts.synthesize(text);
+const base64Audio = await tts.toBase64(text);
+const audioBuffer = Buffer.from(base64Audio, 'base64');
 
 res.set({
 'Content-Type': 'audio/mpeg',
@@ -1188,6 +1191,5 @@ error: "Failed to generate audio"
 });
 }
 });
-
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
