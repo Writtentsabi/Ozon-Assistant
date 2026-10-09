@@ -1153,6 +1153,18 @@ return res.status(500).send('Internal Server Error');
 }
 });
 
+// Δημιουργία φακέλου cache στο temp directory του συστήματος
+const ttsCacheDir = path.join(os.tmpdir(), 'oxyzen_tts_cache');
+if (!fs.existsSync(ttsCacheDir)) {
+try {
+fs.mkdirSync(ttsCacheDir, {
+recursive: true
+});
+} catch (e) {
+console.error("Failed to create TTS cache dir:", e);
+}
+}
+
 app.post('/api/tts', async (req, res) => {
 const {
 text,
@@ -1167,17 +1179,31 @@ error: "Missing text parameter"
 
 try {
 const selectedVoice = voice || 'el-GR-NestorNeural';
-const outputPath = path.join(os.tmpdir(), `temp_${Date.now()}.mp3`);
 
+// Δημιουργία μοναδικού hash (md5 μέσω crypto) βάσει κειμένου και φωνής για το αρχείο cache
+const hashInput = `${selectedVoice}_${text}`;
+const textHash = crypto.createHash('md5').update(hashInput).digest('hex');
+const cachedFilePath = path.join(ttsCacheDir, `${textHash}.mp3`);
+
+// 1. Αν υπάρχει ήδη στη cache, στέλνεσαι αμέσως χωρίς καμία καθυστέρηση / timeout
+if (fs.existsSync(cachedFilePath)) {
+const cachedBuffer = fs.readFileSync(cachedFilePath);
+res.set({
+'Content-Type': 'audio/mpeg',
+'Content-Length': cachedBuffer.length
+});
+return res.send(cachedBuffer);
+}
+
+// 2. Αν δεν υπάρχει, το παράγουμε μέσω Edge TTS
 const tts = new EdgeTTS( {
 voice: selectedVoice,
 outputFormat: 'audio-24khz-48kbitrate-mono-mp3'
 });
 
-await tts.ttsPromise(text, outputPath);
+await tts.ttsPromise(text, cachedFilePath);
 
-const audioBuffer = fs.readFileSync(outputPath);
-fs.unlinkSync(outputPath);
+const audioBuffer = fs.readFileSync(cachedFilePath);
 
 res.set({
 'Content-Type': 'audio/mpeg',
@@ -1188,8 +1214,6 @@ return res.send(audioBuffer);
 
 } catch (error) {
 console.error("Edge-TTS Error Full:", error);
-console.error("Edge-TTS Error Message:", error.message);
-console.error("Edge-TTS Error Stack:", error.stack);
 return res.status(500).json({
 error: "Failed to generate audio",
 details: error.message || String(error)
