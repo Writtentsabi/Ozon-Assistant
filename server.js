@@ -25,6 +25,7 @@ import {
 import {
 	EdgeTTS
 } from 'node-edge-tts';
+import crypto from 'crypto';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
