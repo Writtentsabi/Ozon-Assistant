@@ -1148,12 +1148,6 @@ return res.status(500).send('Internal Server Error');
 }
 });
 
-const {
-EdgeTTS
-} = require('node-edge-tts');
-const fs = require('fs');
-const path = require('path');
-
 app.post('/api/tts', async (req, res) => {
 const {
 text,
@@ -1175,10 +1169,8 @@ voice: selectedVoice,
 outputFormat: 'audio-24khz-48kbitrate-mono-mp3'
 });
 
-// Η επίσημη και σωστή μέθοδος της βιβλιοθήκης
 await tts.ttsPromise(text, outputPath);
 
-// Ανάγνωση σε Buffer και καθαρισμός του προσωρινού αρχείου
 const audioBuffer = fs.readFileSync(outputPath);
 fs.unlinkSync(outputPath);
 
