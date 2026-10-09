@@ -4,6 +4,9 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import {
+	google
+} from 'googleapis';
+import {
 	Innertube
 } from 'youtubei.js';
 import {
@@ -31,9 +34,67 @@ const ai = new GoogleGenAI( {
 });
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
 
-// ----------------------------------------------------
+// GOOGLE PLAY DEVELOPER API CLIENT
+function getAndroidPublisherClient() {
+	const jsonKey = process.env.PLAY_STORE_KEY_JSON;
+	if (!jsonKey) {
+		throw new Error('Η μεταβλητή PLAY_STORE_KEY_JSON δεν έχει οριστεί στο περιβάλλον!');
+	}
+
+	const credentials = typeof jsonKey === 'string' ? JSON.parse(jsonKey): jsonKey;
+
+	const auth = new google.auth.GoogleAuth({
+		credentials,
+		scopes: ['https://www.googleapis.com/auth/androidpublisher'],
+	});
+
+	return google.androidpublisher({
+		version: 'v3', auth
+	});
+}
+
+async function fetchLatestReleaseNotes() {
+	const packageName = process.env.PACKAGE_NAME || 'com.oxyzen.browser';
+	const androidpublisher = getAndroidPublisherClient();
+
+	// 1. Δημιουργία Edit Session
+	const editRes = await androidpublisher.edits.insert({
+		packageName
+	});
+	const editId = editRes.data.id;
+
+	// 2. Λήψη Production Track
+	const tracksRes = await androidpublisher.edits.tracks.get({
+		packageName,
+		editId,
+		track: 'production',
+	});
+
+	const releases = tracksRes.data.releases;
+	if (!releases || releases.length === 0) {
+		return {
+			success: false,
+			message: 'Δεν βρέθηκαν διαθέσιμες κυκλοφορίες (releases).'
+		};
+	}
+
+	const latestRelease = releases[0];
+	const versionName = latestRelease.name || 'Νέα έκδοση';
+	const releaseNotesList = latestRelease.releaseNotes || [];
+
+	// Αναζήτηση για τα ελληνικά release notes (el-GR)
+	let greekNotes = releaseNotesList.find(note => note.language === 'el-GR' || note.language === 'el');
+	const notesText = greekNotes ? greekNotes.text: (releaseNotesList[0]?.text || 'Δεν περιλαμβάνονται σημειώσεις έκδοσης.');
+
+	return {
+		success: true,
+		versionName,
+		notes: notesText,
+		status: latestRelease.status,
+	};
+}
+
 // YOUTUBE TRANSCRIPT CLIENT (Innertube)
-// ----------------------------------------------------
 let youtubeClient = null;
 
 async function getYouTubeClient() {
@@ -142,12 +203,29 @@ const buildSchema = (properties, requiredKeys = []) => ({
 	required: requiredKeys
 });
 
-// ----------------------------------------------------
-// OXYZEN BROWSER ENDPOINTS
-// ----------------------------------------------------
+// OXYZEN BROWSER & GOOGLE PLAY ENDPOINTS
+app.get('/api/play-store/release-notes', async (req, res) => {
+	try {
+		const releaseData = await fetchLatestReleaseNotes();
+		if (!releaseData.success) {
+			return res.status(404).json(releaseData);
+		}
+		return res.json(releaseData);
+	} catch (error) {
+		console.error('Σφάλμα κατά την ανάκτηση release notes:', error);
+		return res.status(500).json({
+			error: error.message
+		});
+	}
+});
+
 app.post('/api/chat', async (req, res) => {
 	const {
-		prompt, images, mimeType, history, aspectRatio
+		prompt,
+		images,
+		mimeType,
+		history,
+		aspectRatio
 	} = req.body;
 
 	try {
@@ -601,9 +679,7 @@ app.get('/api/wakeup', (req, res) => res.status(200).json({
 status: "online"
 }));
 
-// ----------------------------------------------------
 // TELEGRAM BOT (grammY)
-// ----------------------------------------------------
 const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
 const TARGET_GROUP_ID = process.env.TELEGRAM_TARGET_GROUP_ID;
 
@@ -613,14 +689,13 @@ UPDATES: 16,
 GENERAL: 1
 };
 
-// Αποθήκευση ιστορικού συνομιλίας ανά Chat/Topic ID στη μνήμη
 const chatHistories = new Map();
 const MAX_HISTORY_LENGTH = 10;
 
 if (telegramToken) {
 const bot = new Bot(telegramToken);
 
-// 1. INLINE KEYBOARD CALLBACKS (Approve / Reject Actions)
+// 1. INLINE KEYBOARD CALLBACKS
 bot.on('callback_query:data', async (ctx) => {
 const data = ctx.callbackQuery.data;
 
@@ -730,7 +805,6 @@ const isReplyToBot = replyToMessage && replyToMessage.from?.id === ctx.me.id;
 const isMentioned = userPrompt.includes(`@${botUsername}`);
 const isDirectlyAddressed = isPrivateChat || isReplyToBot || isMentioned;
 
-// Δημιουργία μοναδικού Key για κάθε Topic ή Private Chat
 const historyKey = isPrivateChat ? `user_${chatId}`: `group_${chatId}_topic_${threadId}`;
 let conversationHistory = chatHistories.get(historyKey) || [];
 
@@ -753,6 +827,28 @@ await ctx.reply("📌 Message unpinned.");
 } else {
 await ctx.api.unpinAllChatMessages(chatId);
 await ctx.reply("📌 All messages unpinned.");
+}
+return;
+}
+
+// BOT COMMAND: CHECK PLAY STORE RELEASE
+if (userPrompt.startsWith('/release') || userPrompt.startsWith('/update')) {
+await ctx.replyWithChatAction('typing');
+try {
+const releaseData = await fetchLatestReleaseNotes();
+if (!releaseData.success) {
+await ctx.reply(`⚠️ ${releaseData.message}`);
+return;
+}
+const releaseMsg = `🚀 *Νέα Update for OxyZen Browser!*\n\n` +
+`📌 *Version:* ${releaseData.versionName}\n` +
+`📝 *Release Notes:*\n${releaseData.notes}`;
+await ctx.reply(releaseMsg, {
+parse_mode: 'Markdown'
+});
+} catch (relErr) {
+console.error("Release fetch error:", relErr);
+await ctx.reply("⚠️ Αποτυχία ανάκτησης release notes από το Play Store API.");
 }
 return;
 }
@@ -809,10 +905,7 @@ console.error("Moderation check failed:", modErr);
 }
 }
 
-// Σταματάει αν δεν απευθύνθηκαν στο bot
-if (!isDirectlyAddressed) {
-return;
-}
+if (!isDirectlyAddressed) return;
 
 const cleanPrompt = userPrompt.replace(`@${botUsername}`, '').trim();
 await ctx.replyWithChatAction('typing');
@@ -913,7 +1006,7 @@ return;
 }
 }
 
-// GEMINI CHAT ΜΕ ΠΕΡΑΣΜΕΝΟ ΤΟ TOPIC HISTORY
+// GEMINI CHAT
 const chat = ai.chats.create({
 model: CHAT_MODEL,
 history: conversationHistory,
@@ -953,16 +1046,13 @@ let cleanResponse = response.text
 
 if (!cleanResponse) cleanResponse = response.text;
 
-// ΕΝΗΜΕΡΩΣΗ ΙΣΤΟΡΙΚΟΥ TOPIC
 conversationHistory.push({
-role: 'user',
-parts: [{
+role: 'user', parts: [{
 text: promptForAi
 }]
 });
 conversationHistory.push({
-role: 'model',
-parts: [{
+role: 'model', parts: [{
 text: cleanResponse
 }]
 });
@@ -972,7 +1062,6 @@ conversationHistory = conversationHistory.slice(-MAX_HISTORY_LENGTH);
 }
 
 chatHistories.set(historyKey, conversationHistory);
-
 await ctx.reply(cleanResponse);
 
 } catch (error) {
@@ -984,7 +1073,7 @@ await ctx.reply("⚠️ An error occurred while processing your request.");
 bot.catch((err) => console.error("Telegram Runner Error:", err.message));
 
 run(bot);
-console.log("Telegram Bot initialized with grammY Runner, Topic Broadcasts & Per-Topic History.");
+console.log("Telegram Bot initialized with grammY Runner, Topic Broadcasts & Play Store Release Checker.");
 } else {
 console.log("TELEGRAM_BOT_TOKEN is missing in environment variables.");
 }
@@ -1055,7 +1144,7 @@ return res.status(500).send('Internal Server Error');
 }
 });
 
-// ELEVENLABS TTS ENDPOINT (/api/tts)
+// ELEVENLABS TTS ENDPOINT
 app.post('/api/tts', async (req, res) => {
 const {
 text
@@ -1068,7 +1157,7 @@ error: "Missing text parameter"
 }
 
 const apiKey = process.env.ELEVENLABS_API_KEY;
-const voiceId = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB"; // Default: Adam
+const voiceId = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB";
 
 if (!apiKey) {
 console.error("ELEVENLABS_API_KEY is missing from environment variables.");
