@@ -1148,7 +1148,12 @@ return res.status(500).send('Internal Server Error');
 }
 });
 
-//Voice Generator
+const {
+EdgeTTS
+} = require('node-edge-tts');
+const fs = require('fs');
+const path = require('path');
+
 app.post('/api/tts', async (req, res) => {
 const {
 text,
@@ -1162,20 +1167,20 @@ error: "Missing text parameter"
 }
 
 try {
-// Αν δεν δώσεις voice, ελέγχουμε αν το κείμενο είναι ελληνικά ή αγγλικά
-let selectedVoice = voice;
-if (!selectedVoice) {
-const isGreek = /[Α-Ωα-ωίόήάέύώϊϋΐΰΏΊΌΉΆΈΎΏΙΫ]/.test(text);
-selectedVoice = isGreek ? 'el-GR-NestorNeural': 'en-US-AriaNeural';
-}
+const selectedVoice = voice || 'el-GR-NestorNeural';
+const outputPath = path.join(__dirname, `temp_${Date.now()}.mp3`);
 
 const tts = new EdgeTTS( {
 voice: selectedVoice,
 outputFormat: 'audio-24khz-48kbitrate-mono-mp3'
 });
 
-const base64Audio = await tts.toBase64(text);
-const audioBuffer = Buffer.from(base64Audio, 'base64');
+// Η επίσημη και σωστή μέθοδος της βιβλιοθήκης
+await tts.ttsPromise(text, outputPath);
+
+// Ανάγνωση σε Buffer και καθαρισμός του προσωρινού αρχείου
+const audioBuffer = fs.readFileSync(outputPath);
+fs.unlinkSync(outputPath);
 
 res.set({
 'Content-Type': 'audio/mpeg',
