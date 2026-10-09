@@ -457,7 +457,7 @@ app.post('/api/chat', async (req, res) => {
 				case "VISUAL":
 					systemPrompt = "Extract list visual mode (cards,titles).";
 					props = {
-						visual = {
+						visual: {
 							type: Type.STRING,
 							enum: ["cards",
 								"titles"]
