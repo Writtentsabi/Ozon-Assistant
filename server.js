@@ -22,6 +22,9 @@ import {
 import {
 	run
 } from '@grammyjs/runner';
+import {
+tts
+} from 'edge-tts';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1144,10 +1147,11 @@ return res.status(500).send('Internal Server Error');
 }
 });
 
-// ELEVENLABS TTS ENDPOINT
+//Voice Generator
 app.post('/api/tts', async (req, res) => {
 const {
-text
+text,
+voice
 } = req.body;
 
 if (!text) {
@@ -1156,58 +1160,27 @@ error: "Missing text parameter"
 });
 }
 
-const apiKey = process.env.ELEVENLABS_API_KEY;
-const voiceId = process.env.ELEVENLABS_VOICE_ID || "pNInz6obpgDQGcFmaJgB";
-
-if (!apiKey) {
-console.error("ELEVENLABS_API_KEY is missing from environment variables.");
-return res.status(500).json({
-error: "Server API key configuration error"
-});
-}
-
 try {
-const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-method: 'POST',
-headers: {
-'Accept': 'audio/mpeg',
-'Content-Type': 'application/json',
-'xi-api-key': apiKey
-},
-body: JSON.stringify({
-text: text,
-model_id: "eleven_v4_turbo",
-voice_settings: {
-stability: 0.80,
-similarity_boost: 0.75,
-style: 0.0,
-use_speaker_boost: true
-}
-})
-});
+// Χρήση της φωνής από το app ή fallback σε Nestor
+const selectedVoice = voice || 'el-GR-NestorNeural';
 
-if (!response.ok) {
-const errText = await response.text();
-console.error("ElevenLabs API Error:", errText);
-return res.status(response.status).json({
-error: "ElevenLabs API request failed"
+const audioBuffer = await tts(text, {
+voice: selectedVoice,
+rate: '0%',
+pitch: '0Hz'
 });
-}
-
-const arrayBuffer = await response.arrayBuffer();
-const buffer = Buffer.from(arrayBuffer);
 
 res.set({
 'Content-Type': 'audio/mpeg',
-'Content-Length': buffer.length
+'Content-Length': audioBuffer.length
 });
 
-return res.send(buffer);
+return res.send(audioBuffer);
 
 } catch (error) {
-console.error("TTS Server Error:", error.message);
+console.error("Edge-TTS Error:", error.message);
 return res.status(500).json({
-error: "Failed to generate voice audio"
+error: "Failed to generate audio"
 });
 }
 });
