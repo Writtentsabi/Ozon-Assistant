@@ -1162,7 +1162,6 @@ error: "Missing text parameter"
 
 try {
 const selectedVoice = voice || 'el-GR-NestorNeural';
-// Χρήση του os.tmpdir() αντί για __dirname
 const outputPath = path.join(os.tmpdir(), `temp_${Date.now()}.mp3`);
 
 const tts = new EdgeTTS( {
@@ -1183,9 +1182,12 @@ res.set({
 return res.send(audioBuffer);
 
 } catch (error) {
-console.error("Edge-TTS Error:", error.message);
+console.error("Edge-TTS Error Full:", error);
+console.error("Edge-TTS Error Message:", error.message);
+console.error("Edge-TTS Error Stack:", error.stack);
 return res.status(500).json({
-error: "Failed to generate audio"
+error: "Failed to generate audio",
+details: error.message || String(error)
 });
 }
 });
