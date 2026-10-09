@@ -23,8 +23,9 @@ import {
 	run
 } from '@grammyjs/runner';
 import {
-tts
-} from 'edge-tts';
+	EdgeTTS
+} from 'node-edge-tts';
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1161,14 +1162,17 @@ error: "Missing text parameter"
 }
 
 try {
-// Χρήση της φωνής από το app ή fallback σε Nestor
 const selectedVoice = voice || 'el-GR-NestorNeural';
 
-const audioBuffer = await tts(text, {
+// Αρχικοποίηση του EdgeTTS
+const tts = new EdgeTTS( {
 voice: selectedVoice,
-rate: '0%',
-pitch: '0Hz'
+lang: 'el-GR',
+outputFormat: 'audio-24khz-48kbitrate-mono-mp3'
 });
+
+// Παραγωγή του audio buffer
+const audioBuffer = await tts.synthesize(text);
 
 res.set({
 'Content-Type': 'audio/mpeg',
@@ -1184,5 +1188,6 @@ error: "Failed to generate audio"
 });
 }
 });
+
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
