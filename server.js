@@ -75,22 +75,56 @@ async function fetchLatestReleaseNotes() {
 	if (!releases || releases.length === 0) {
 		return {
 			success: false,
-			message: 'There are no available releases.'
+			message: 'There are no available releases in production.'
 		};
 	}
 
-	const latestRelease = releases[0];
-	const versionName = latestRelease.name || 'New Version';
-	const releaseNotesList = latestRelease.releaseNotes || [];
+	// Βρίσκουμε την έκδοση με το υψηλότερο versionCode μέσα στο production track
+	let highestRelease = null;
+	let maxVersionCode = -1;
 
-	let greekNotes = releaseNotesList.find(note => note.language === 'el-GR' || note.language === 'el');
-	const notesText = greekNotes ? greekNotes.text: (releaseNotesList[0]?.text || 'Ther are no release Notes available.');
+	for (const release of releases) {
+		const codes = release.versionCodes || [];
+		for (const codeStr of codes) {
+			const code = Number(codeStr);
+			if (code > maxVersionCode) {
+				maxVersionCode = code;
+				highestRelease = release;
+			}
+		}
+	}
+
+	if (!highestRelease || maxVersionCode === -1) {
+		return {
+			success: false,
+			message: 'No valid releases found in production.'
+		};
+	}
+
+	const versionName = highestRelease.name || `Version code: ${maxVersionCode}`;
+	const releaseNotesList = highestRelease.releaseNotes || [];
+
+	// Έλεγχος για Ελληνικά (el-GR ή el), αλλιώς παίρνει οποιαδήποτε άλλη διαθέσιμη γλώσσα (π.χ. Αγγλικά)
+	let selectedNote = releaseNotesList.find(note => note.language === 'el-GR' || note.language === 'el');
+
+	if (!selectedNote && releaseNotesList.length > 0) {
+		// Αν δεν υπάρχουν Ελληνικά, δοκιμάζουμε English (en-US, en-GB, en)
+		selectedNote = releaseNotesList.find(note => note.language && note.language.startsWith('en'));
+	}
+
+	// Αν δεν βρεθεί ούτε Ελληνικά ούτε Αγγλικά, παίρνουμε την πρώτη διαθέσιμη γλώσσα της λίστας
+	if (!selectedNote && releaseNotesList.length > 0) {
+		selectedNote = releaseNotesList[0];
+	}
+
+	const notesText = selectedNote ? selectedNote.text: 'There are no release notes available.';
 
 	return {
 		success: true,
 		versionName,
 		notes: notesText,
-		status: latestRelease.status,
+		status: highestRelease.status,
+		versionCode: maxVersionCode
 	};
 }
 
@@ -338,7 +372,7 @@ app.post('/api/chat', async (req, res) => {
 				token: imgRes.usageMetadata?.totalTokenCount || 0
 			});
 
-		} else if (["NAVIGATE", "THEME", "TOOLBAR", "SEARCH_ENGINE", "BOOKMARK", "REMOVE_BOOKMARK", "SCALE", "JAVASCRIPT", "COOKIES", "PASSWORDS", "DEVELOPER_SETTINGS", "VPN"].includes(decision)) {
+		} else if (["NAVIGATE", "THEME", "TOOLBAR", "SEARCH_ENGINE", "BOOKMARK", "REMOVE_BOOKMARK", "SCALE", "JAVASCRIPT", "COOKIES", "PASSWORDS", "DEVELOPER_SETTINGS", "VPN", "VISUAL"].includes(decision)) {
 
 			let systemPrompt = "";
 			let props = {};
