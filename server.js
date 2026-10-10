@@ -21,9 +21,8 @@ import {
 	InlineKeyboard,
 	webhookCallback
 } from 'grammy';
-import {
-	EdgeTTS
-} from 'node-edge-tts';
+import textToSpeech from '@google-cloud/text-to-speech';
+import { franc } from 'franc';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -56,6 +55,13 @@ function getAndroidPublisherClient() {
 	});
 }
 
+// GOOGLE CLOUD TTS CLIENT
+function getTtsClient() {
+	const jsonKey = process.env.PLAY_STORE_KEY_JSON;
+	const credentials = jsonKey ? (typeof jsonKey === 'string' ? JSON.parse(jsonKey) : jsonKey) : undefined;
+	return new textToSpeech.TextToSpeechClient({ credentials });
+}
+
 async function fetchLatestReleaseNotes() {
 	const packageName = process.env.PACKAGE_NAME || 'oxy.ozon.browser';
 	const androidpublisher = getAndroidPublisherClient();
@@ -79,7 +85,6 @@ async function fetchLatestReleaseNotes() {
 		};
 	}
 
-	// Βρίσκουμε την έκδοση με το υψηλότερο versionCode μέσα στο production track
 	let highestRelease = null;
 	let maxVersionCode = -1;
 
@@ -104,15 +109,12 @@ async function fetchLatestReleaseNotes() {
 	const versionName = highestRelease.name || `Version code: ${maxVersionCode}`;
 	const releaseNotesList = highestRelease.releaseNotes || [];
 
-	// Έλεγχος για Ελληνικά (el-GR ή el), αλλιώς παίρνει οποιαδήποτε άλλη διαθέσιμη γλώσσα (π.χ. Αγγλικά)
 	let selectedNote = releaseNotesList.find(note => note.language === 'el-GR' || note.language === 'el');
 
 	if (!selectedNote && releaseNotesList.length > 0) {
-		// Αν δεν υπάρχουν Ελληνικά, δοκιμάζουμε English (en-US, en-GB, en)
 		selectedNote = releaseNotesList.find(note => note.language && note.language.startsWith('en'));
 	}
 
-	// Αν δεν βρεθεί ούτε Ελληνικά ούτε Αγγλικά, παίρνουμε την πρώτη διαθέσιμη γλώσσα της λίστας
 	if (!selectedNote && releaseNotesList.length > 0) {
 		selectedNote = releaseNotesList[0];
 	}
@@ -601,7 +603,7 @@ app.post('/api/chat', async (req, res) => {
 				})
 			},
 			VISUAL: {
-				text: `<div class="thought">Zen Settings...</div><p>VPN set to <strong>${parsed.vpn}</strong>.</p>`,
+				text: `<div class="thought">Zen Settings...</div><p>Visual presentation set to <strong>${parsed.visual}</strong>.</p>`,
 				function: "VISUAL",
 				data: JSON.stringify({
 					setVisual: parsed.visual
@@ -909,7 +911,7 @@ await ctx.api.pinChatMessage(chatId, sentMsg.message_id);
 
 } catch (relErr) {
 console.error("Release fetch error:", relErr);
-await ctx.reply("⚠️ Failure atgetting  release notes from Play Store API.");
+await ctx.reply("⚠️ Failure at getting release notes from Play Store API.");
 }
 return;
 }
@@ -1136,7 +1138,6 @@ await ctx.reply("⚠️ An error occurred while processing your request.");
 
 bot.catch((err) => console.error("Telegram Bot Error:", err.message));
 
-// Express Webhook Route για το Telegram (αντί για run/polling)
 app.use(`/api/telegram/${telegramToken}`,
 webhookCallback(bot, 'express'));
 console.log(`Telegram Bot configured for Webhook mode at /api/telegram/${telegramToken}`);
@@ -1220,10 +1221,12 @@ console.error("Failed to create TTS cache dir:", e);
 }
 }
 
+// Google Cloud TTS Endpoint with Auto Language Detection
 app.post('/api/tts', async (req, res) => {
 const {
 text,
-voice
+voice,
+lang
 } = req.body;
 
 if (!text) {
@@ -1233,7 +1236,28 @@ error: "Missing text parameter"
 }
 
 try {
-const selectedVoice = voice || 'el-GR-NestorNeural';
+let languageCode = lang;
+
+if (!languageCode) {
+const detectedFranc = franc(text, { minLength: 3 });
+const langMap = {
+'ell': 'el-GR',
+'eng': 'en-US',
+'swa': 'sw-KE',
+'spa': 'es-ES',
+'fra': 'fr-FR',
+'deu': 'de-DE',
+'ita': 'it-IT',
+'tur': 'tr-TR',
+'bul': 'bg-BG',
+'alb': 'sq-AL'
+};
+languageCode = langMap[detectedFranc] || 'en-US';
+}
+
+const defaultVoice = `${languageCode}-Neural2-A`;
+const selectedVoice = voice || defaultVoice;
+
 const hashInput = `${selectedVoice}_${text}`;
 const textHash = crypto.createHash('md5').update(hashInput).digest('hex');
 const cachedFilePath = path.join(ttsCacheDir, `${textHash}.mp3`);
@@ -1247,14 +1271,20 @@ res.set({
 return res.send(cachedBuffer);
 }
 
-const tts = new EdgeTTS( {
-voice: selectedVoice,
-outputFormat: 'audio-24khz-48kbitrate-mono-mp3'
-});
+const ttsClient = getTtsClient();
+const request = {
+input: { text: text },
+voice: { 
+	languageCode: languageCode, 
+	name: selectedVoice 
+},
+audioConfig: { audioEncoding: 'MP3' },
+};
 
-await tts.ttsPromise(text, cachedFilePath);
+const [response] = await ttsClient.synthesizeSpeech(request);
+const audioBuffer = Buffer.from(response.audioContent);
 
-const audioBuffer = fs.readFileSync(cachedFilePath);
+fs.writeFileSync(cachedFilePath, audioBuffer);
 
 res.set({
 'Content-Type': 'audio/mpeg',
@@ -1264,7 +1294,7 @@ res.set({
 return res.send(audioBuffer);
 
 } catch (error) {
-console.error("Edge-TTS Error Full:", error);
+console.error("Google Cloud TTS Error:", error);
 return res.status(500).json({
 error: "Failed to generate audio",
 details: error.message || String(error)
