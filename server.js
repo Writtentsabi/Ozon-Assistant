@@ -13,6 +13,7 @@ import { Bot, InputFile, InlineKeyboard, webhookCallback } from 'grammy';
 import textToSpeech from '@google-cloud/text-to-speech';
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const CHAT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
