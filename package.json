@@ -16,6 +16,7 @@
     "@paxsenix/ai": "^0.1.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.7.1",
     "franc": "^6.2.0",
     "googleapis": "^185.0.0",
     "grammy": "^1.46.0",
