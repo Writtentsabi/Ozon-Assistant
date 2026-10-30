@@ -5,11 +5,21 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
-import { google } from 'googleapis';
-import { Innertube } from 'youtubei.js';
-import { GoogleGenAI, Type } from "@google/genai";
+import {
+	google
+} from 'googleapis';
+import {
+	Innertube
+} from 'youtubei.js';
+import {
+	GoogleGenAI,
+	Type
+} from "@google/genai";
 import PaxSenixAI from '@paxsenix/ai';
-import { Bot, InputFile, InlineKeyboard, webhookCallback } from 'grammy';
+import {
+	Bot,
+	webhookCallback
+} from 'grammy';
 import textToSpeech from '@google-cloud/text-to-speech';
 
 const app = express();
@@ -19,7 +29,7 @@ const CHAT_MODEL = process.env.CHAT_MODEL || "gemini-2.5-flash";
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
 const ROUTER_MODEL = process.env.ROUTER_MODEL || "gemini-2.5-flash-lite";
 
-const ai = new GoogleGenAI({
+const ai = new GoogleGenAI( {
 	apiKey: process.env.GEMINI_API_KEY
 });
 const paxsenix = new PaxSenixAI(process.env.PAXSENIX_KEY);
@@ -37,7 +47,7 @@ const loadHistoryFromFile = () => {
 	} catch (e) {
 		console.error("Error loading history file:", e);
 	}
-	return {}; // Format: { session_id: [ {role, content}, ... ] }
+	return {}; // Format: { session_id: [ {role, parts}, ... ] }
 };
 
 const saveHistoryToFile = (historyObj) => {
@@ -49,12 +59,14 @@ const saveHistoryToFile = (historyObj) => {
 };
 
 // --- RATE LIMITING ---
-const limiter = rateLimit({
+const limiter = rateLimit( {
 	windowMs: 15 * 60 * 1000,
 	max: 100,
 	standardHeaders: true,
 	legacyHeaders: false,
-	message: { error: "Too many requests from this IP, please try again after 15 minutes." }
+	message: {
+		error: "Too many requests from this IP, please try again after 15 minutes."
+	}
 });
 app.use('/api/', limiter);
 
@@ -65,7 +77,7 @@ function getAndroidPublisherClient() {
 		throw new Error('Η μεταβλητή PLAY_STORE_KEY_JSON δεν έχει οριστεί στο περιβάλλον!');
 	}
 
-	const credentials = typeof jsonKey === 'string' ? JSON.parse(jsonKey) : jsonKey;
+	const credentials = typeof jsonKey === 'string' ? JSON.parse(jsonKey): jsonKey;
 
 	const auth = new google.auth.GoogleAuth({
 		credentials,
@@ -135,7 +147,7 @@ async function fetchLatestReleaseNotes() {
 		selectedNote = releaseNotesList[0];
 	}
 
-	const notesText = selectedNote ? selectedNote.text : 'There are no release notes available.';
+	const notesText = selectedNote ? selectedNote.text: 'There are no release notes available.';
 
 	return {
 		success: true,
@@ -177,9 +189,9 @@ async function processYouTubeVideo(promptText) {
 
 		const segments = transcriptData.transcript.content.body?.initial_segments || [];
 		const fullTranscriptText = segments
-			.map(segment => segment.snippet?.text || '')
-			.filter(text => text.length > 0)
-			.join(' ');
+		.map(segment => segment.snippet?.text || '')
+		.filter(text => text.length > 0)
+		.join(' ');
 
 		if (!fullTranscriptText) return null;
 
@@ -192,15 +204,27 @@ async function processYouTubeVideo(promptText) {
 	}
 }
 
-const safety = [
-	{ category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
-	{ category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
-	{ category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
-	{ category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" }
-];
+const safety = [{
+	category: "HARM_CATEGORY_HARASSMENT",
+	threshold: "BLOCK_ONLY_HIGH"
+},
+	{
+		category: "HARM_CATEGORY_HATE_SPEECH",
+		threshold: "BLOCK_ONLY_HIGH"
+	},
+	{
+		category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+		threshold: "BLOCK_ONLY_HIGH"
+	},
+	{
+		category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+		threshold: "BLOCK_ONLY_HIGH"
+	}];
 
 app.use(express.static('public'));
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({
+	limit: '50mb'
+}));
 
 const SYSTEM_INSTRUCTION = `Your name is Zen, you are the personal assistant for the OxyZen Browser.
 
@@ -255,26 +279,40 @@ app.get('/api/play-store/release-notes', async (req, res) => {
 		return res.json(releaseData);
 	} catch (error) {
 		console.error('Σφάλμα κατά την ανάκτηση release notes:', error);
-		return res.status(500).json({ error: error.message });
+		return res.status(500).json({
+			error: error.message
+		});
 	}
 });
 
 // --- API CHAT ENDPOINT (Με Persistent History σε JSON & SSE Streaming) ---
 app.post('/api/chat', async (req, res) => {
-	const { prompt, images, mimeType, sessionId, aspectRatio, stream } = req.body;
+	const {
+		prompt,
+		images,
+		mimeType,
+		sessionId,
+		aspectRatio,
+		stream
+	} = req.body;
 	const currentSession = sessionId || 'default_session';
 
 	if (!prompt && (!images || images.length === 0)) {
-		return res.status(400).json({ error: "Missing prompt or image content." });
+		return res.status(400).json({
+			error: "Missing prompt or image content."
+		});
 	}
 
 	try {
 		const allHistories = loadHistoryFromFile();
 		const sessionMessages = allHistories[currentSession] || [];
 
+		// Proper format for GoogleGenAI SDK history: Array of { role: 'user'|'model', parts: [{ text: '...' }] }
 		const safeHistory = sessionMessages.map(msg => ({
 			role: msg.role,
-			parts: [{ text: msg.content }]
+			parts: Array.isArray(msg.parts) ? msg.parts: [{
+				text: msg.content || msg.text || ''
+			}]
 		}));
 
 		const videoTranscript = await processYouTubeVideo(prompt);
@@ -290,13 +328,14 @@ app.post('/api/chat', async (req, res) => {
 				...safeHistory,
 				{
 					role: "user",
-					parts: [{ text: `Analyze user intent: "${prompt}"` }]
-				}
-			],
+					parts: [{
+						text: `Analyze user intent: "${prompt}"`
+					}]
+				}],
 			config: {
 				systemInstruction: ROUTER_SYSTEM_INSTRUCTION,
 				responseMimeType: "application/json",
-				responseSchema: buildSchema({
+				responseSchema: buildSchema( {
 					decision: {
 						type: Type.STRING,
 						description: "Classification keyword."
@@ -328,8 +367,12 @@ app.post('/api/chat', async (req, res) => {
 				}
 			});
 
-			const synthRes = await withTimeout(contextChat.sendMessage({ message: prompt }), GOOGLE_TIMEOUT_MS);
-			const currentParts = [{ text: synthRes.text.trim() }];
+			const synthRes = await withTimeout(contextChat.sendMessage({
+				message: prompt
+			}), GOOGLE_TIMEOUT_MS);
+			const currentParts = [{
+				text: synthRes.text.trim()
+			}];
 
 			if (Array.isArray(images)) {
 				images.forEach(imgBase64 => {
@@ -349,7 +392,6 @@ app.post('/api/chat', async (req, res) => {
 					parts: currentParts
 				}],
 				config: {
-					responseModalities: ['IMAGE'],
 					safetySettings: safety,
 					imageConfig: {
 						aspectRatio: aspectRatio || "1:1"
@@ -378,55 +420,123 @@ app.post('/api/chat', async (req, res) => {
 			switch (decision) {
 				case "NAVIGATE":
 					systemPrompt = "Extract destination URL.";
-					props = { url: { type: Type.STRING } };
+					props = {
+						url: {
+							type: Type.STRING
+						}
+					};
 					break;
 				case "THEME":
 					systemPrompt = "Identify theme mode (dark, light, or system).";
-					props = { theme: { type: Type.STRING, enum: ["dark", "light", "system"] } };
+					props = {
+						theme: {
+							type: Type.STRING,
+							enum: ["dark",
+								"light",
+								"system"]
+						}
+					};
 					break;
 				case "TOOLBAR":
 					systemPrompt = "Identify toolbar placement (top, bottom).";
-					props = { action: { type: Type.STRING, enum: ["top", "bottom"] } };
+					props = {
+						action: {
+							type: Type.STRING,
+							enum: ["top",
+								"bottom"]
+						}
+					};
 					break;
 				case "SEARCH_ENGINE":
 					systemPrompt = "Extract search engine name and search URL template using '%s'.";
-					props = { engine: { type: Type.STRING }, searchUrl: { type: Type.STRING } };
+					props = {
+						engine: {
+							type: Type.STRING
+						},
+						searchUrl: {
+							type: Type.STRING
+						}
+					};
 					break;
 				case "BOOKMARK":
 					systemPrompt = "Extract title and URL for bookmark.";
-					props = { title: { type: Type.STRING }, url: { type: Type.STRING } };
+					props = {
+						title: {
+							type: Type.STRING
+						},
+						url: {
+							type: Type.STRING
+						}
+					};
 					break;
 				case "REMOVE_BOOKMARK":
 					systemPrompt = "Extract title of bookmark to remove.";
-					props = { title: { type: Type.STRING } };
+					props = {
+						title: {
+							type: Type.STRING
+						}
+					};
 					break;
 				case "SCALE":
 					systemPrompt = "Extract integer scale between 0 and 5.";
-					props = { scale: { type: Type.INTEGER } };
+					props = {
+						scale: {
+							type: Type.INTEGER
+						}
+					};
 					break;
 				case "JAVASCRIPT":
 					systemPrompt = "Extract JavaScript enabled state (boolean).";
-					props = { javaScript: { type: Type.BOOLEAN } };
+					props = {
+						javaScript: {
+							type: Type.BOOLEAN
+						}
+					};
 					break;
 				case "COOKIES":
 					systemPrompt = "Extract cookies enabled state (boolean).";
-					props = { cookies: { type: Type.BOOLEAN } };
+					props = {
+						cookies: {
+							type: Type.BOOLEAN
+						}
+					};
 					break;
 				case "PASSWORDS":
 					systemPrompt = "Extract password saving state (boolean).";
-					props = { passwords: { type: Type.BOOLEAN } };
+					props = {
+						passwords: {
+							type: Type.BOOLEAN
+						}
+					};
 					break;
 				case "DEVELOPER_SETTINGS":
 					systemPrompt = "Extract developer mode state (boolean).";
-					props = { developer: { type: Type.BOOLEAN } };
+					props = {
+						developer: {
+							type: Type.BOOLEAN
+						}
+					};
 					break;
 				case "VPN":
 					systemPrompt = "Extract VPN mode (off, default, family).";
-					props = { vpn: { type: Type.STRING, enum: ["off", "default", "family"] } };
+					props = {
+						vpn: {
+							type: Type.STRING,
+							enum: ["off",
+								"default",
+								"family"]
+						}
+					};
 					break;
 				case "VISUAL":
 					systemPrompt = "Extract list visual mode (cards, titles).";
-					props = { visual: { type: Type.STRING, enum: ["cards", "titles"] } };
+					props = {
+						visual: {
+							type: Type.STRING,
+							enum: ["cards",
+								"titles"]
+						}
+					};
 					break;
 			}
 
@@ -447,547 +557,658 @@ app.post('/api/chat', async (req, res) => {
 				NAVIGATE: {
 					text: `<div class="thought">Zen Auto-Routing...</div><p>Routing to link: <a href="${parsed.url}" target="_blank">${parsed.url}</a></p>`,
 					function: "NAVIGATE",
-					data: JSON.stringify({ openUrl: parsed.url })
-				},
-				THEME: {
-					text: `<div class="thought">Zen Settings...</div><p>Theme set to <strong>${parsed.theme} mode</strong>.</p>`,
-					function: "THEME",
-					data: JSON.stringify({ setTheme: parsed.theme })
-				},
-				TOOLBAR: {
-					text: `<div class="thought">Zen Settings...</div><p>Toolbar set to <strong>${parsed.action}</strong>.</p>`,
-					function: "TOOLBAR",
-					data: JSON.stringify({ setToolbarPosition: parsed.action })
-				},
-				SEARCH_ENGINE: {
-					text: `<div class="thought">Zen Settings...</div><p>Default engine set to <strong>${parsed.engine}</strong>.</p>`,
-					function: "SEARCH_ENGINE",
-					data: JSON.stringify({ setSearchEngine: parsed.engine, searchUrlTemplate: parsed.searchUrl })
-				},
-				BOOKMARK: {
-					text: `<div class="thought">Zen Bookmarks...</div><p>Added <strong>${parsed.title}</strong> to Bookmarks.</p>`,
-					function: "BOOKMARK",
-					data: JSON.stringify({ title: parsed.title, url: parsed.url })
-				},
-				REMOVE_BOOKMARK: {
-					text: `<div class="thought">Zen Bookmarks...</div><p>Removed <strong>${parsed.title}</strong> from Bookmarks.</p>`,
-					function: "REMOVE_BOOKMARK",
-					data: JSON.stringify({ removeTitle: parsed.title })
-				},
-				SCALE: {
-					text: `<div class="thought">Zen Settings...</div><p>Scale set to <strong>${parsed.scale}</strong>.</p>`,
-					function: "SCALE",
-					data: JSON.stringify({ setScale: String(parsed.scale) })
-				},
-				JAVASCRIPT: {
-					text: `<div class="thought">Zen Settings...</div><p>JavaScript set to <strong>${parsed.javaScript}</strong>.</p>`,
-					function: "JAVASCRIPT",
-					data: JSON.stringify({ setJavaScript: parsed.javaScript })
-				},
-				COOKIES: {
-					text: `<div class="thought">Zen Settings...</div><p>Cookies set to <strong>${parsed.cookies}</strong>.</p>`,
-					function: "COOKIES",
-					data: JSON.stringify({ setCookies: parsed.cookies })
-				},
-				PASSWORDS: {
-					text: `<div class="thought">Zen Settings...</div><p>Password saving set to <strong>${parsed.passwords}</strong>.</p>`,
-					function: "PASSWORDS",
-					data: JSON.stringify({ setPassword: parsed.passwords })
-				},
-				DEVELOPER_SETTINGS: {
-					text: `<div class="thought">Zen Settings...</div><p>Developer Mode set to <strong>${parsed.developer}</strong>.</p>`,
-					function: "DEVELOPER_SETTINGS",
-					data: JSON.stringify({ setDeveloper: parsed.developer })
-				},
-				VPN: {
-					text: `<div class="thought">Zen Settings...</div><p>VPN set to <strong>${parsed.vpn}</strong>.</p>`,
-					function: "VPN",
-					data: JSON.stringify({ setVPN: parsed.vpn })
-				},
-				VISUAL: {
-					text: `<div class="thought">Zen Settings...</div><p>Visual presentation set to <strong>${parsed.visual}</strong>.</p>`,
-					function: "VISUAL",
-					data: JSON.stringify({ setVisual: parsed.visual })
-				}
-			};
-
-			return res.json({
-				...uiResponses[decision],
-				token: uiRes.usageMetadata?.totalTokenCount || 0
-			});
-
-		} else {
-			const chat = ai.chats.create({
-				model: CHAT_MODEL,
-				history: safeHistory,
-				config: {
-					systemInstruction: SYSTEM_INSTRUCTION,
-					tools: [{ googleSearch: {} }],
-					safetySettings: safety,
-				},
-			});
-
-			const messageParts = [];
-			if (Array.isArray(images) && images.length > 0) {
-				images.forEach(imgBase64 => {
-					messageParts.push({
-						inlineData: {
-							data: imgBase64,
-							mimeType: mimeType || "image/jpeg"
-						}
-					});
-				});
+					data: JSON.stringify({
+						openUrl: parsed.url
+					})
+			},
+			THEME: {
+				text: `<div class="thought">Zen Settings...</div><p>Theme set to <strong>${parsed.theme} mode</strong>.</p>`,
+				function: "THEME",
+				data: JSON.stringify({
+					setTheme: parsed.theme
+				})
+			},
+			TOOLBAR: {
+				text: `<div class="thought">Zen Settings...</div><p>Toolbar set to <strong>${parsed.action}</strong>.</p>`,
+				function: "TOOLBAR",
+				data: JSON.stringify({
+					setToolbarPosition: parsed.action
+				})
+			},
+			SEARCH_ENGINE: {
+				text: `<div class="thought">Zen Settings...</div><p>Default engine set to <strong>${parsed.engine}</strong>.</p>`,
+				function: "SEARCH_ENGINE",
+				data: JSON.stringify({
+					setSearchEngine: parsed.engine, searchUrlTemplate: parsed.searchUrl
+				})
+			},
+			BOOKMARK: {
+				text: `<div class="thought">Zen Bookmarks...</div><p>Added <strong>${parsed.title}</strong> to Bookmarks.</p>`,
+				function: "BOOKMARK",
+				data: JSON.stringify({
+					title: parsed.title, url: parsed.url
+				})
+			},
+			REMOVE_BOOKMARK: {
+				text: `<div class="thought">Zen Bookmarks...</div><p>Removed <strong>${parsed.title}</strong> from Bookmarks.</p>`,
+				function: "REMOVE_BOOKMARK",
+				data: JSON.stringify({
+					removeTitle: parsed.title
+				})
+			},
+			SCALE: {
+				text: `<div class="thought">Zen Settings...</div><p>Scale set to <strong>${parsed.scale}</strong>.</p>`,
+				function: "SCALE",
+				data: JSON.stringify({
+					setScale: String(parsed.scale)
+				})
+			},
+			JAVASCRIPT: {
+				text: `<div class="thought">Zen Settings...</div><p>JavaScript set to <strong>${parsed.javaScript}</strong>.</p>`,
+				function: "JAVASCRIPT",
+				data: JSON.stringify({
+					setJavaScript: parsed.javaScript
+				})
+			},
+			COOKIES: {
+				text: `<div class="thought">Zen Settings...</div><p>Cookies set to <strong>${parsed.cookies}</strong>.</p>`,
+				function: "COOKIES",
+				data: JSON.stringify({
+					setCookies: parsed.cookies
+				})
+			},
+			PASSWORDS: {
+				text: `<div class="thought">Zen Settings...</div><p>Password saving set to <strong>${parsed.passwords}</strong>.</p>`,
+				function: "PASSWORDS",
+				data: JSON.stringify({
+					setPassword: parsed.passwords
+				})
+			},
+			DEVELOPER_SETTINGS: {
+				text: `<div class="thought">Zen Settings...</div><p>Developer Mode set to <strong>${parsed.developer}</strong>.</p>`,
+				function: "DEVELOPER_SETTINGS",
+				data: JSON.stringify({
+					setDeveloper: parsed.developer
+				})
+			},
+			VPN: {
+				text: `<div class="thought">Zen Settings...</div><p>VPN set to <strong>${parsed.vpn}</strong>.</p>`,
+				function: "VPN",
+				data: JSON.stringify({
+					setVPN: parsed.vpn
+				})
+			},
+			VISUAL: {
+				text: `<div class="thought">Zen Settings...</div><p>Visual presentation set to <strong>${parsed.visual}</strong>.</p>`,
+				function: "VISUAL",
+				data: JSON.stringify({
+					setVisual: parsed.visual
+				})
 			}
+		};
 
-			messageParts.push(finalPrompt);
+		return res.json({
+			...uiResponses[decision],
+			token: uiRes.usageMetadata?.totalTokenCount || 0
+		});
 
-			const updateHistoryFile = (userText, modelText) => {
-				if (!allHistories[currentSession]) {
-					allHistories[currentSession] = [];
+	} else {
+		const chat = ai.chats.create({
+			model: CHAT_MODEL,
+			history: safeHistory,
+			config: {
+				systemInstruction: SYSTEM_INSTRUCTION,
+				tools: [{
+					googleSearch: {}
+				}],
+				safetySettings: safety,
+		},
+		});
+
+	const messageParts = [];
+	if (Array.isArray(images) && images.length > 0) {
+		images.forEach(imgBase64 => {
+			messageParts.push({
+				inlineData: {
+					data: imgBase64,
+					mimeType: mimeType || "image/jpeg"
 				}
-				allHistories[currentSession].push({ role: 'user', content: userText });
-				allHistories[currentSession].push({ role: 'model', content: modelText });
-
-				if (allHistories[currentSession].length > 20) {
-					allHistories[currentSession] = allHistories[currentSession].slice(-20);
-				}
-				saveHistoryToFile(allHistories);
-			};
-
-			if (stream) {
-				res.setHeader('Content-Type', 'text/event-stream');
-				res.setHeader('Cache-Control', 'no-cache');
-				res.setHeader('Connection', 'keep-alive');
-
-				const responseStream = await chat.sendMessageStream({ message: messageParts });
-				let fullText = '';
-
-				for await (const chunk of responseStream) {
-					const chunkText = chunk.text || '';
-					fullText += chunkText;
-					res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
-				}
-
-				res.write(`data: [DONE]\n\n`);
-				res.end();
-
-				updateHistoryFile(prompt, fullText);
-				return;
-			}
-
-			const chatPromise = chat.sendMessage({ message: messageParts });
-			const response = await withTimeout(chatPromise, CHAT_TIMEOUT_MS);
-			const responseText = response.text;
-
-			updateHistoryFile(prompt, responseText);
-
-			return res.json({
-				text: responseText,
-				token: response.usageMetadata?.totalTokenCount || 0
 			});
-		}
-
-	} catch (globalError) {
-		try {
-			const paxResponse = await paxsenix.createChatCompletion({
-				model: 'gpt-4o-mini',
-				messages: [
-					{ role: 'system', content: SYSTEM_INSTRUCTION },
-					{ role: 'user', content: prompt }
-				]
-			});
-
-			return res.json({
-				text: paxResponse.choices[0].message.content,
-				token: 0,
-				fallbackUsed: true
-			});
-		} catch (paxError) {
-			return res.status(500).json({ error: "AI services unavailable." });
-		}
+		});
 	}
+
+	messageParts.push(finalPrompt);
+
+	const updateHistoryFile = (userPartsList, modelText) => {
+		if (!allHistories[currentSession]) {
+			allHistories[currentSession] = [];
+		}
+		allHistories[currentSession].push({
+			role: 'user', parts: [{
+				text: prompt
+			}]
+		});
+		allHistories[currentSession].push({
+			role: 'model', parts: [{
+				text: modelText
+			}]
+		});
+
+		if (allHistories[currentSession].length > 20) {
+			allHistories[currentSession] = allHistories[currentSession].slice(-20);
+		}
+		saveHistoryToFile(allHistories);
+	};
+
+	if (stream) {
+		res.setHeader('Content-Type', 'text/event-stream');
+		res.setHeader('Cache-Control', 'no-cache');
+		res.setHeader('Connection', 'keep-alive');
+
+		const responseStream = await chat.sendMessageStream({
+			message: messageParts
+		});
+		let fullText = '';
+
+		for await (const chunk of responseStream) {
+			const chunkText = chunk.text || '';
+			fullText += chunkText;
+			res.write(`data: ${JSON.stringify({
+				text: chunkText
+			})}\n\n`);
+		}
+
+		res.write(`data: [DONE]\n\n`);
+		res.end();
+
+		updateHistoryFile(prompt, fullText);
+		return;
+	}
+
+	const chatPromise = chat.sendMessage({
+		message: messageParts
+	});
+	const response = await withTimeout(chatPromise, CHAT_TIMEOUT_MS);
+	const responseText = response.text;
+
+	updateHistoryFile(prompt, responseText);
+
+	return res.json({
+		text: responseText,
+		token: response.usageMetadata?.totalTokenCount || 0
+	});
+}
+
+} catch (globalError) {
+	console.error("AI Main Endpoint Error:", globalError);
+	try {
+		const paxResponse = await paxsenix.createChatCompletion({
+			model: 'gpt-4o-mini',
+			messages: [{
+				role: 'system', content: SYSTEM_INSTRUCTION
+		},
+			{
+				role: 'user', content: prompt
+			}]
+		});
+
+	return res.json({
+		text: paxResponse.choices[0].message.content,
+		token: 0,
+		fallbackUsed: true
+	});
+} catch (paxError) {
+	console.error("PaxSenix Fallback Error:", paxError);
+	return res.status(500).json({
+		error: "AI services unavailable."
+	});
+}
+}
 });
 
 app.post('/api/quiz', async (req, res) => {
-	const { prompt } = req.body;
-	const randomSeed = Math.floor(Math.random() * 100000);
+const {
+prompt
+} = req.body;
+const randomSeed = Math.floor(Math.random() * 100000);
 
-	const quizProperties = {
-		question: { type: Type.STRING },
-		answer1: { type: Type.STRING },
-		answer2: { type: Type.STRING },
-		answer3: { type: Type.STRING },
-		answer4: { type: Type.STRING },
-		answer: { type: Type.STRING, enum: ["answer1", "answer2", "answer3", "answer4"] }
-	};
+const quizProperties = {
+question: {
+type: Type.STRING
+},
+answer1: {
+type: Type.STRING
+},
+answer2: {
+type: Type.STRING
+},
+answer3: {
+type: Type.STRING
+},
+answer4: {
+type: Type.STRING
+},
+answer: {
+type: Type.STRING,
+enum: ["answer1",
+"answer2",
+"answer3",
+"answer4"]
+}
+};
 
-	try {
-		const uiPromise = ai.models.generateContent({
-			model: CHAT_MODEL,
-			contents: `Topic/Prompt: "${prompt}"`,
-			config: {
-				systemInstruction: `Generate a trivia question based on topic. Random seed: ${randomSeed}`,
-				temperature: 1.0,
-				responseMimeType: "application/json",
-				responseSchema: buildSchema(quizProperties, Object.keys(quizProperties))
-			}
-		});
-
-		const uiResponse = await withTimeout(uiPromise, GOOGLE_TIMEOUT_MS);
-		const parsed = JSON.parse(uiResponse.text);
-
-		return res.json(parsed);
-	} catch (error) {
-		return res.status(500).json({
-			error: "Failed to generate quiz.",
-			details: error.message
-		});
-	}
+try {
+const uiPromise = ai.models.generateContent({
+model: CHAT_MODEL,
+contents: `Topic/Prompt: "${prompt}"`,
+config: {
+systemInstruction: `Generate a trivia question based on topic. Random seed: ${randomSeed}`,
+temperature: 1.0,
+responseMimeType: "application/json",
+responseSchema: buildSchema(quizProperties, Object.keys(quizProperties))
+}
 });
 
-app.get('/api/wakeup', (req, res) => res.status(200).json({ status: "online" }));
+const uiResponse = await withTimeout(uiPromise, GOOGLE_TIMEOUT_MS);
+const parsed = JSON.parse(uiResponse.text);
+
+return res.json(parsed);
+} catch (error) {
+return res.status(500).json({
+error: "Failed to generate quiz.",
+details: error.message
+});
+}
+});
+
+app.get('/api/wakeup', (req, res) => res.status(200).json({
+status: "online"
+}));
 
 // TELEGRAM BOT (grammY WEBHOOK SETUP)
 const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
 const TARGET_GROUP_ID = process.env.TELEGRAM_TARGET_GROUP_ID;
 
 const TOPIC_MAP = {
-	ANNOUNCEMENTS: 11,
-	UPDATES: 16,
-	GENERAL: 1
+ANNOUNCEMENTS: 11,
+UPDATES: 16,
+GENERAL: 1
 };
 
 const chatHistories = new Map();
 const MAX_HISTORY_LENGTH = 10;
 
 if (telegramToken) {
-	const bot = new Bot(telegramToken);
+const bot = new Bot(telegramToken);
 
-	bot.on('callback_query:data', async (ctx) => {
-		const data = ctx.callbackQuery.data;
+bot.on('callback_query:data', async (ctx) => {
+const data = ctx.callbackQuery.data;
 
-		if (data.startsWith('approve_') || data.startsWith('reject_')) {
-			const [action, targetAction, chatId, userIdStr, messageIdStr] = data.split('_');
-			const targetUserId = parseInt(userIdStr);
-			const targetMessageId = parseInt(messageIdStr);
+if (data.startsWith('approve_') || data.startsWith('reject_')) {
+const [action,
+targetAction,
+chatId,
+userIdStr,
+messageIdStr] = data.split('_');
+const targetUserId = parseInt(userIdStr);
+const targetMessageId = parseInt(messageIdStr);
 
-			if (action === 'reject') {
-				await ctx.editMessageText("❌ Action rejected by admin.");
-				await ctx.answerCallbackQuery({ text: "Action cancelled." });
-				return;
-			}
+if (action === 'reject') {
+await ctx.editMessageText("❌ Action rejected by admin.");
+await ctx.answerCallbackQuery({
+text: "Action cancelled."
+});
+return;
+}
 
-			if (action === 'approve') {
-				try {
-					if (targetAction === 'kick') {
-						await ctx.api.banChatMember(chatId, targetUserId);
-						await ctx.api.unbanChatMember(chatId, targetUserId);
-						await ctx.editMessageText("✅ User successfully kicked upon approval.");
-					} else if (targetAction === 'ban') {
-						await ctx.api.banChatMember(chatId, targetUserId);
-						await ctx.editMessageText("✅ User successfully banned upon approval.");
-					} else if (targetAction === 'del') {
-						await ctx.api.deleteMessage(chatId, targetMessageId);
-						await ctx.editMessageText("✅ Message successfully deleted upon approval.");
-					}
-					await ctx.answerCallbackQuery({ text: "Action executed!" });
-				} catch (err) {
-					console.error("Error executing approved action:", err);
-					await ctx.editMessageText("⚠️ Failed to execute action (insufficient permissions).");
-				}
-			}
-		}
-	});
+if (action === 'approve') {
+try {
+if (targetAction === 'kick') {
+await ctx.api.banChatMember(chatId, targetUserId);
+await ctx.api.unbanChatMember(chatId, targetUserId);
+await ctx.editMessageText("✅ User successfully kicked upon approval.");
+} else if (targetAction === 'ban') {
+await ctx.api.banChatMember(chatId, targetUserId);
+await ctx.editMessageText("✅ User successfully banned upon approval.");
+} else if (targetAction === 'del') {
+await ctx.api.deleteMessage(chatId, targetMessageId);
+await ctx.editMessageText("✅ Message successfully deleted upon approval.");
+}
+await ctx.answerCallbackQuery({
+text: "Action executed!"
+});
+} catch (err) {
+console.error("Error executing approved action:", err);
+await ctx.editMessageText("⚠️ Failed to execute action (insufficient permissions).");
+}
+}
+}
+});
 
-	bot.on('channel_post', async (ctx) => {
-		const channelPost = ctx.channelPost;
-		const postText = channelPost?.text || channelPost?.caption || "";
+bot.on('channel_post',
+async (ctx) => {
+const channelPost = ctx.channelPost;
+const postText = channelPost?.text || channelPost?.caption || "";
 
-		if (!postText || !TARGET_GROUP_ID) return;
+if (!postText || !TARGET_GROUP_ID) return;
 
-		try {
-			const topicAnalysis = await withTimeout(
-				ai.models.generateContent({
-					model: ROUTER_MODEL,
-					contents: [{
-						role: "user",
-						parts: [{ text: `Categorize channel update: "${postText}"` }]
-					}],
-					config: {
-						systemInstruction: `Categorize the post into one key: "ANNOUNCEMENTS", "UPDATES", or "GENERAL".
+try {
+const topicAnalysis = await withTimeout(
+ai.models.generateContent({
+model: ROUTER_MODEL,
+contents: [{
+role: "user",
+parts: [{
+text: `Categorize channel update: "${postText}"`
+}]
+}],
+config: {
+systemInstruction: `Categorize the post into one key: "ANNOUNCEMENTS", "UPDATES", or "GENERAL".
 Return JSON format: { "topic": "ANNOUNCEMENTS" }`,
-						responseMimeType: "application/json",
-						temperature: 0.0
-					}
-				}),
-				3000
-			);
+responseMimeType: "application/json",
+temperature: 0.0
+}
+}),
+3000
+);
 
-			const result = JSON.parse(topicAnalysis.text);
-			const selectedTopicKey = result?.topic?.toUpperCase() || "ANNOUNCEMENTS";
-			const targetThreadId = TOPIC_MAP[selectedTopicKey] || TOPIC_MAP.GENERAL;
+const result = JSON.parse(topicAnalysis.text);
+const selectedTopicKey = result?.topic?.toUpperCase() || "ANNOUNCEMENTS";
+const targetThreadId = TOPIC_MAP[selectedTopicKey] || TOPIC_MAP.GENERAL;
 
-			await ctx.api.forwardMessage(
-				TARGET_GROUP_ID,
-				channelPost.chat.id,
-				channelPost.message_id,
-				{ message_thread_id: targetThreadId }
-			);
-		} catch (err) {
-			console.error("Error forwarding channel post to topic:", err);
-		}
-	});
+await ctx.api.forwardMessage(
+TARGET_GROUP_ID,
+channelPost.chat.id,
+channelPost.message_id,
+{
+message_thread_id: targetThreadId
+}
+);
+} catch (err) {
+console.error("Error forwarding channel post to topic:", err);
+}
+});
 
-	bot.on('message', async (ctx) => {
-		const chatId = ctx.chat.id;
-		const threadId = ctx.message?.message_thread_id || 1;
-		const userPrompt = ctx.message?.text || ctx.message?.caption || "";
-		const photo = ctx.message?.photo;
-		const messageId = ctx.message?.message_id;
-		const replyToMessage = ctx.message?.reply_to_message;
-		const sender = ctx.message?.from;
+bot.on('message',
+async (ctx) => {
+const chatId = ctx.chat.id;
+const threadId = ctx.message?.message_thread_id || 1;
+const userPrompt = ctx.message?.text || ctx.message?.caption || "";
+const photo = ctx.message?.photo;
+const replyToMessage = ctx.message?.reply_to_message;
 
-		if (!userPrompt && !photo) return;
+if (!userPrompt && !photo) return;
 
-		const botUsername = ctx.me.username;
-		const isPrivateChat = ctx.chat.type === 'private';
-		const isReplyToBot = replyToMessage && replyToMessage.from?.id === ctx.me.id;
-		const isMentioned = userPrompt.includes(`@${botUsername}`);
-		const isDirectlyAddressed = isPrivateChat || isReplyToBot || isMentioned;
+const botUsername = ctx.me.username;
+const isPrivateChat = ctx.chat.type === 'private';
+const isReplyToBot = replyToMessage && replyToMessage.from?.id === ctx.me.id;
+const isMentioned = userPrompt.includes(`@${botUsername}`);
+const isDirectlyAddressed = isPrivateChat || isReplyToBot || isMentioned;
 
-		const historyKey = isPrivateChat ? `user_${chatId}` : `group_${chatId}_topic_${threadId}`;
-		let conversationHistory = chatHistories.get(historyKey) || [];
+const historyKey = isPrivateChat ? `user_${chatId}`: `group_${chatId}_topic_${threadId}`;
+let conversationHistory = chatHistories.get(historyKey) || [];
 
-		try {
-			if (userPrompt.startsWith('/pin')) {
-				if (replyToMessage) {
-					await ctx.api.pinChatMessage(chatId, replyToMessage.message_id);
-					await ctx.reply("📌 Message pinned successfully.");
-				} else {
-					await ctx.reply("⚠ Please reply to the message you want to pin using /pin.");
-				}
-				return;
-			}
+try {
+if (userPrompt.startsWith('/pin')) {
+if (replyToMessage) {
+await ctx.api.pinChatMessage(chatId, replyToMessage.message_id);
+await ctx.reply("📌 Message pinned successfully.");
+} else {
+await ctx.reply("⚠ Please reply to the message you want to pin using /pin.");
+}
+return;
+}
 
-			if (userPrompt.startsWith('/unpin')) {
-				if (replyToMessage) {
-					await ctx.api.unpinChatMessage(chatId, replyToMessage.message_id);
-					await ctx.reply("📌 Message unpinned.");
-				} else {
-					await ctx.api.unpinAllChatMessages(chatId);
-					await ctx.reply("📌 All messages unpinned.");
-				}
-				return;
-			}
+if (userPrompt.startsWith('/unpin')) {
+if (replyToMessage) {
+await ctx.api.unpinChatMessage(chatId, replyToMessage.message_id);
+await ctx.reply("📌 Message unpinned.");
+} else {
+await ctx.api.unpinAllChatMessages(chatId);
+await ctx.reply("📌 All messages unpinned.");
+}
+return;
+}
 
-			if (userPrompt.startsWith('/release') || userPrompt.startsWith('/update')) {
-				await ctx.replyWithChatAction('typing');
-				try {
-					const releaseData = await fetchLatestReleaseNotes();
-					if (!releaseData.success) {
-						await ctx.reply(`⚠️ ${releaseData.message}`);
-						return;
-					}
-					const releaseMsg = `🚀 *Νέα Update for OxyZen Browser!*\n\n` +
-						`📌 *Version:* ${releaseData.versionName}\n` +
-						`📝 *Release Notes:*\n${releaseData.notes}`;
+if (userPrompt.startsWith('/release') || userPrompt.startsWith('/update')) {
+await ctx.replyWithChatAction('typing');
+try {
+const releaseData = await fetchLatestReleaseNotes();
+if (!releaseData.success) {
+await ctx.reply(`⚠️ ${releaseData.message}`);
+return;
+}
+const releaseMsg = `🚀 *Νέα Update for OxyZen Browser!*\n\n` +
+`📌 *Version:* ${releaseData.versionName}\n` +
+`📝 *Release Notes:*\n${releaseData.notes}`;
 
-					const sentMsg = await ctx.reply(releaseMsg, { parse_mode: 'Markdown' });
-					await ctx.api.pinChatMessage(chatId, sentMsg.message_id);
+const sentMsg = await ctx.reply(releaseMsg, {
+parse_mode: 'Markdown'
+});
+await ctx.api.pinChatMessage(chatId, sentMsg.message_id);
 
-				} catch (relErr) {
-					console.error("Release fetch error:", relErr);
-					await ctx.reply("⚠️ Failure getting release notes from Play Store API.");
-				}
-				return;
-			}
+} catch (relErr) {
+console.error("Release fetch error:", relErr);
+await ctx.reply("⚠️ Failure getting release notes from Play Store API.");
+}
+return;
+}
 
-			if (!isDirectlyAddressed) return;
+if (!isDirectlyAddressed) return;
 
-			const cleanPrompt = userPrompt.replace(`@${botUsername}`, '').trim();
-			await ctx.replyWithChatAction('typing');
+const cleanPrompt = userPrompt.replace(`@${botUsername}`, '').trim();
+await ctx.replyWithChatAction('typing');
 
-			let imagesPayload = [];
-			let mimeType = "image/jpeg";
+let imagesPayload = [];
+let mimeType = "image/jpeg";
 
-			if (photo && photo.length > 0) {
-				const highestResPhoto = photo[photo.length - 1];
-				const fileInfo = await ctx.api.getFile(highestResPhoto.file_id);
-				const fileUrl = `https://api.telegram.org/file/bot${telegramToken}/${fileInfo.file_path}`;
+if (photo && photo.length > 0) {
+const highestResPhoto = photo[photo.length - 1];
+const fileInfo = await ctx.api.getFile(highestResPhoto.file_id);
+const fileUrl = `https://api.telegram.org/file/bot${telegramToken}/${fileInfo.file_path}`;
 
-				const responseImg = await fetch(fileUrl);
-				const arrayBuffer = await responseImg.arrayBuffer();
-				const base64Img = Buffer.from(arrayBuffer).toString('base64');
-				imagesPayload.push(base64Img);
-			}
+const responseImg = await fetch(fileUrl);
+const arrayBuffer = await responseImg.arrayBuffer();
+const base64Img = Buffer.from(arrayBuffer).toString('base64');
+imagesPayload.push(base64Img);
+}
 
-			const promptForAi = cleanPrompt || userPrompt;
-			const videoTranscript = await processYouTubeVideo(promptForAi);
-			let finalPrompt = promptForAi;
-			if (videoTranscript) {
-				finalPrompt = `${promptForAi}\n\n[YouTube Video Transcript]:\n${videoTranscript}`;
-			}
+const promptForAi = cleanPrompt || userPrompt;
+const videoTranscript = await processYouTubeVideo(promptForAi);
+let finalPrompt = promptForAi;
+if (videoTranscript) {
+finalPrompt = `${promptForAi}\n\n[YouTube Video Transcript]:\n${videoTranscript}`;
+}
 
-			const chat = ai.chats.create({
-				model: CHAT_MODEL,
-				history: conversationHistory,
-				config: {
-					systemInstruction: `Your name is Zen, you are the personal assistant for OxyZen and community manager.`,
-					tools: [{ googleSearch: {} }],
-					safetySettings: safety,
-				},
-			});
+const chat = ai.chats.create({
+model: CHAT_MODEL,
+history: conversationHistory,
+config: {
+systemInstruction: `Your name is Zen, you are the personal assistant for OxyZen and community manager.`,
+tools: [{
+googleSearch: {}
+}],
+safetySettings: safety,
+},
+});
 
-			const messageParts = [];
-			if (imagesPayload.length > 0) {
-				imagesPayload.forEach(imgBase64 => {
-					messageParts.push({ inlineData: { data: imgBase64, mimeType } });
-				});
-			}
-			messageParts.push(finalPrompt || "Describe this image.");
+const messageParts = [];
+if (imagesPayload.length > 0) {
+imagesPayload.forEach(imgBase64 => {
+messageParts.push({
+inlineData: {
+data: imgBase64, mimeType
+}
+});
+});
+}
+messageParts.push(finalPrompt || "Describe this image.");
 
-			const response = await withTimeout(chat.sendMessage({ message: messageParts }), CHAT_TIMEOUT_MS);
+const response = await withTimeout(chat.sendMessage({
+message: messageParts
+}), CHAT_TIMEOUT_MS);
 
-			let cleanResponse = response.text
-				.replace(/<div class="thought">[\s\S]*?<\/div>/gi, '')
-				.replace(/<\/?[^>]+(>|$)/g, '')
-				.trim();
+let cleanResponse = response.text
+.replace(/<div class="thought">[\s\S]*?<\/div>/gi, '')
+.replace(/<\/?[^>]+(>|$)/g, '')
+.trim();
 
-			if (!cleanResponse) cleanResponse = response.text;
+if (!cleanResponse) cleanResponse = response.text;
 
-			conversationHistory.push({ role: 'user', parts: [{ text: promptForAi }] });
-			conversationHistory.push({ role: 'model', parts: [{ text: cleanResponse }] });
+conversationHistory.push({
+role: 'user', parts: [{
+text: promptForAi
+}]
+});
+conversationHistory.push({
+role: 'model', parts: [{
+text: cleanResponse
+}]
+});
 
-			if (conversationHistory.length > MAX_HISTORY_LENGTH) {
-				conversationHistory = conversationHistory.slice(-MAX_HISTORY_LENGTH);
-			}
+if (conversationHistory.length > MAX_HISTORY_LENGTH) {
+conversationHistory = conversationHistory.slice(-MAX_HISTORY_LENGTH);
+}
 
-			chatHistories.set(historyKey, conversationHistory);
-			await ctx.reply(cleanResponse);
+chatHistories.set(historyKey, conversationHistory);
+await ctx.reply(cleanResponse);
 
-		} catch (error) {
-			console.error("Telegram Bot Error:", error);
-			await ctx.reply("⚠️ An error occurred while processing your request.");
-		}
-	});
+} catch (error) {
+console.error("Telegram Bot Error:", error);
+await ctx.reply("⚠️ An error occurred while processing your request.");
+}
+});
 
-	bot.catch((err) => console.error("Telegram Bot Error:", err.message));
-	app.use(`/api/telegram/${telegramToken}`, webhookCallback(bot, 'express'));
+bot.catch((err) => console.error("Telegram Bot Error:", err.message));
+app.use(`/api/telegram/${telegramToken}`,
+webhookCallback(bot, 'express'));
 }
 
 // GITHUB WEBHOOK HANDLER
 app.post('/api/github-webhook', async (req, res) => {
-	const event = req.headers['x-github-event'];
-	const payload = req.body;
+const event = req.headers['x-github-event'];
+const payload = req.body;
 
-	if (!payload || !process.env.TELEGRAM_TARGET_GROUP_ID) {
-		return res.status(400).send('Missing payload or Telegram target group configuration.');
-	}
+if (!payload || !process.env.TELEGRAM_TARGET_GROUP_ID) {
+return res.status(400).send('Missing payload or Telegram target group configuration.');
+}
 
-	try {
-		let messageText = "";
-		let category = "UPDATES";
+try {
+let messageText = "";
+let category = "UPDATES";
 
-		if (event === 'release' && payload.action === 'published') {
-			category = "ANNOUNCEMENTS";
-			messageText = `🚀 **New Release Published!**\n\n` +
-				`• **Version:** ${payload.release.tag_name}\n` +
-				`• **Name:** ${payload.release.name || 'N/A'}\n` +
-				`• **Repository:** ${payload.repository.name}\n\n` +
-				`${payload.release.body || ''}\n\n` +
-				`🔗 [View Release](${payload.release.html_url})`;
-		} else if (event === 'push') {
-			category = "UPDATES";
-			const commits = payload.commits || [];
-			if (commits.length === 0) return res.status(200).send('No commits found.');
+if (event === 'release' && payload.action === 'published') {
+category = "ANNOUNCEMENTS";
+messageText = `🚀 **New Release Published!**\n\n` +
+`• **Version:** ${payload.release.tag_name}\n` +
+`• **Name:** ${payload.release.name || 'N/A'}\n` +
+`• **Repository:** ${payload.repository.name}\n\n` +
+`${payload.release.body || ''}\n\n` +
+`🔗 [View Release](${payload.release.html_url})`;
+} else if (event === 'push') {
+category = "UPDATES";
+const commits = payload.commits || [];
+if (commits.length === 0) return res.status(200).send('No commits found.');
 
-			const commitMessages = commits.map(c => `• ${c.message} (by _${c.author.name}_)`).join('\n');
-			messageText = `🔨 **New Commit(s) Pushed!**\n\n` +
-				`• **Repository:** ${payload.repository.name}\n` +
-				`• **Branch:** ${payload.ref.replace('refs/heads/', '')}\n\n` +
-				`${commitMessages}\n\n` +
-				`🔗 [Compare Changes](${payload.compare})`;
-		}
+const commitMessages = commits.map(c => `• ${c.message} (by _${c.author.name}_)`).join('\n');
+messageText = `🔨 **New Commit(s) Pushed!**\n\n` +
+`• **Repository:** ${payload.repository.name}\n` +
+`• **Branch:** ${payload.ref.replace('refs/heads/', '')}\n\n` +
+`${commitMessages}\n\n` +
+`🔗 [Compare Changes](${payload.compare})`;
+}
 
-		if (messageText && telegramToken) {
-			const targetThreadId = TOPIC_MAP[category] || TOPIC_MAP.GENERAL;
-			const bot = new Bot(telegramToken);
+if (messageText && telegramToken) {
+const targetThreadId = TOPIC_MAP[category] || TOPIC_MAP.GENERAL;
+const bot = new Bot(telegramToken);
 
-			await bot.api.sendMessage(
-				process.env.TELEGRAM_TARGET_GROUP_ID,
-				messageText, {
-					message_thread_id: targetThreadId,
-					parse_mode: 'Markdown',
-					link_preview_options: { is_disabled: true }
-				}
-			);
-		}
+await bot.api.sendMessage(
+process.env.TELEGRAM_TARGET_GROUP_ID,
+messageText, {
+message_thread_id: targetThreadId,
+parse_mode: 'Markdown',
+link_preview_options: {
+is_disabled: true
+}
+}
+);
+}
 
-		return res.status(200).send('Webhook processed successfully.');
-	} catch (error) {
-		console.error('Error handling GitHub webhook:', error);
-		return res.status(500).send('Internal Server Error');
-	}
+return res.status(200).send('Webhook processed successfully.');
+} catch (error) {
+console.error('Error handling GitHub webhook:', error);
+return res.status(500).send('Internal Server Error');
+}
 });
 
 const ttsCacheDir = path.join(os.tmpdir(), 'oxyzen_tts_cache');
 if (!fs.existsSync(ttsCacheDir)) {
-	try {
-		fs.mkdirSync(ttsCacheDir, { recursive: true });
-	} catch (e) {
-		console.error("Failed to create TTS cache dir:", e);
-	}
+try {
+fs.mkdirSync(ttsCacheDir, {
+recursive: true
+});
+} catch (e) {
+console.error("Failed to create TTS cache dir:", e);
+}
 }
 
 app.post('/api/tts', async (req, res) => {
-	const { text, voice } = req.body;
+const {
+text, voice
+} = req.body;
 
-	if (!text) {
-		return res.status(400).json({ error: "Missing text parameter" });
-	}
+if (!text) {
+return res.status(400).json({
+error: "Missing text parameter"
+});
+}
 
-	try {
-		const selectedVoice = voice || 'el-GR-Neural2-A';
-		const hashInput = `${selectedVoice}_${text}`;
-		const textHash = crypto.createHash('md5').update(hashInput).digest('hex');
-		const cachedFilePath = path.join(ttsCacheDir, `${textHash}.mp3`);
+try {
+const selectedVoice = voice || 'el-GR-Neural2-A';
+const hashInput = `${selectedVoice}_${text}`;
+const textHash = crypto.createHash('md5').update(hashInput).digest('hex');
+const cachedFilePath = path.join(ttsCacheDir, `${textHash}.mp3`);
 
-		if (fs.existsSync(cachedFilePath)) {
-			const cachedBuffer = fs.readFileSync(cachedFilePath);
-			res.set({
-				'Content-Type': 'audio/mpeg',
-				'Content-Length': cachedBuffer.length
-			});
-			return res.send(cachedBuffer);
-		}
+if (fs.existsSync(cachedFilePath)) {
+const cachedBuffer = fs.readFileSync(cachedFilePath);
+res.set({
+'Content-Type': 'audio/mpeg',
+'Content-Length': cachedBuffer.length
+});
+return res.send(cachedBuffer);
+}
 
-		const request = {
-			input: { text: text },
-			voice: {
-				languageCode: selectedVoice.split('-').slice(0, 2).join('-'),
-				name: selectedVoice
-			},
-			audioConfig: { audioEncoding: 'MP3' },
-		};
+const request = {
+input: {
+text: text
+},
+voice: {
+languageCode: selectedVoice.split('-').slice(0, 2).join('-'),
+name: selectedVoice
+},
+audioConfig: {
+audioEncoding: 'MP3'
+},
+};
 
-		const [response] = await ttsClient.synthesizeSpeech(request);
+const [response] = await ttsClient.synthesizeSpeech(request);
 
-		fs.writeFileSync(cachedFilePath, response.audioContent);
+fs.writeFileSync(cachedFilePath, response.audioContent);
 
-		res.set({
-			'Content-Type': 'audio/mpeg',
-			'Content-Length': response.audioContent.length
-		});
+res.set({
+'Content-Type': 'audio/mpeg',
+'Content-Length': response.audioContent.length
+});
 
-		return res.send(response.audioContent);
+return res.send(response.audioContent);
 
-	} catch (error) {
-		console.error("Google Cloud TTS Error:", error);
-		return res.status(500).json({
-			error: "Failed to generate audio",
-			details: error.message || String(error)
-		});
-	}
+} catch (error) {
+console.error("Google Cloud TTS Error:", error);
+return res.status(500).json({
+error: "Failed to generate audio",
+details: error.message || String(error)
+});
+}
 });
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
