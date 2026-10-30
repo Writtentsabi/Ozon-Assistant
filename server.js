@@ -579,14 +579,16 @@ app.post('/api/chat', async (req, res) => {
 				text: `<div class="thought">Zen Settings...</div><p>Default engine set to <strong>${parsed.engine}</strong>.</p>`,
 				function: "SEARCH_ENGINE",
 				data: JSON.stringify({
-					setSearchEngine: parsed.engine, searchUrlTemplate: parsed.searchUrl
+					setSearchEngine: parsed.engine,
+					searchUrlTemplate: parsed.searchUrl
 				})
 			},
 			BOOKMARK: {
 				text: `<div class="thought">Zen Bookmarks...</div><p>Added <strong>${parsed.title}</strong> to Bookmarks.</p>`,
 				function: "BOOKMARK",
 				data: JSON.stringify({
-					title: parsed.title, url: parsed.url
+					title: parsed.title,
+					url: parsed.url
 				})
 			},
 			REMOVE_BOOKMARK: {
@@ -684,12 +686,14 @@ app.post('/api/chat', async (req, res) => {
 			allHistories[currentSession] = [];
 		}
 		allHistories[currentSession].push({
-			role: 'user', parts: [{
+			role: 'user',
+			parts: [{
 				text: prompt
 			}]
 		});
 		allHistories[currentSession].push({
-			role: 'model', parts: [{
+			role: 'model',
+			parts: [{
 				text: modelText
 			}]
 		});
@@ -701,13 +705,14 @@ app.post('/api/chat', async (req, res) => {
 	};
 
 	if (stream) {
+		const responseStream = await chat.sendMessageStream({
+			message: messageParts
+		});
+
 		res.setHeader('Content-Type', 'text/event-stream');
 		res.setHeader('Cache-Control', 'no-cache');
 		res.setHeader('Connection', 'keep-alive');
 
-		const responseStream = await chat.sendMessageStream({
-			message: messageParts
-		});
 		let fullText = '';
 
 		for await (const chunk of responseStream) {
@@ -741,14 +746,27 @@ app.post('/api/chat', async (req, res) => {
 
 } catch (globalError) {
 	console.error("AI Main Endpoint Error:", globalError);
+
+	if (res.headersSent) {
+		console.error("Headers already sent, writing SSE error payload.");
+		res.write(`data: ${JSON.stringify({
+			error: "AI services unavailable."
+		})}\n\n`);
+		res.end();
+		return;
+	}
+
 	try {
+		console.log("Attempting PaxSenix Fallback...");
 		const paxResponse = await paxsenix.createChatCompletion({
 			model: 'gpt-4o-mini',
 			messages: [{
-				role: 'system', content: SYSTEM_INSTRUCTION
+				role: 'system',
+				content: SYSTEM_INSTRUCTION
 		},
 			{
-				role: 'user', content: prompt
+				role: 'user',
+				content: prompt
 			}]
 		});
 
