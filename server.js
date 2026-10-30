@@ -798,7 +798,7 @@ app.post('/api/chat', async (req, res) => {
 						role: 'user',
 						content: prompt
 					}]
-		})
+		}),
 			signal: AbortSignal.timeout(10000)
 		});
 
