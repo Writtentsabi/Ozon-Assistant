@@ -32,7 +32,9 @@ const ROUTER_MODEL = process.env.ROUTER_MODEL || "gemini-2.5-flash-lite";
 const ai = new GoogleGenAI( {
 	apiKey: process.env.GEMINI_API_KEY
 });
-const paxsenix = new PaxSenixAI();
+const paxsenix = new PaxSenixAI( {
+	apiKey: process.env.PAXSENIX_API_KEY
+});
 const ttsClient = new textToSpeech.TextToSpeechClient();
 
 // --- JSON FILE PERSISTENT HISTORY SETUP ---
