@@ -15,7 +15,6 @@ import {
 	GoogleGenAI,
 	Type
 } from "@google/genai";
-import PaxSenixAI from '@paxsenix/ai';
 import {
 	Bot,
 	webhookCallback
@@ -31,9 +30,6 @@ const ROUTER_MODEL = process.env.ROUTER_MODEL || "gemini-2.5-flash-lite";
 
 const ai = new GoogleGenAI( {
 	apiKey: process.env.GEMINI_API_KEY
-});
-const paxsenix = new PaxSenixAI( {
-	apiKey: process.env.PAXSENIX_API_KEY
 });
 const ttsClient = new textToSpeech.TextToSpeechClient();
 
@@ -759,21 +755,37 @@ app.post('/api/chat', async (req, res) => {
 	}
 
 	try {
-		console.log("Attempting PaxSenix Fallback...");
-		const paxResponse = await paxsenix.createChatCompletion({
-			model: 'gpt-4o-mini',
-			messages: [{
-				role: 'system',
-				content: SYSTEM_INSTRUCTION
-		},
-			{
-				role: 'user',
-				content: prompt
-			}]
+		console.log("Attempting PaxSenix Fallback via fetch...");
+
+		const paxResponse = await fetch("https://api.paxsenix.org/v1/chat/completions", {
+			method: "POST",
+			headers: {
+				"Authorization": `Bearer ${process.env.PAXSENIX_API_KEY}`,
+				"Content-Type": "application/json"
+			},
+			body: JSON.stringify({
+				model: CHAT_MODEL, // Χρησιμοποιεί το ίδιο ακριβώς μοντέλο με το CHAT_MODEL
+				messages: [{
+					role: 'system',
+					content: SYSTEM_INSTRUCTION
+				},
+					{
+						role: 'user',
+						content: prompt
+					}]
+		})
 		});
 
+	const paxData = await paxResponse.json();
+
+	if (!paxResponse.ok) {
+		throw new Error(`PaxSenix API error: ${paxResponse.status} - ${JSON.stringify(paxData)}`);
+	}
+
+	const fallbackText = paxData.choices?.[0]?.message?.content || "No response content";
+
 	return res.json({
-		text: paxResponse.choices[0].message.content,
+		text: fallbackText,
 		token: 0,
 		fallbackUsed: true
 	});
