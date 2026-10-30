@@ -799,6 +799,7 @@ app.post('/api/chat', async (req, res) => {
 						content: prompt
 					}]
 		})
+			signal: AbortSignal.timeout(10000)
 		});
 
 	const paxData = await paxResponse.json();
