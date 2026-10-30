@@ -17,7 +17,7 @@ app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const CHAT_MODEL = process.env.CHAT_MODEL || "gemini-2.5-flash";
 const IMAGE_MODEL = process.env.IMAGE_MODEL || "gemini-2.5-flash-image";
-const ROUTER_MODEL = process.env.ROUTER_MODEL"gemini-2.5-flash-lite";
+const ROUTER_MODEL = process.env.ROUTER_MODEL || "gemini-2.5-flash-lite";
 
 const ai = new GoogleGenAI({
 	apiKey: process.env.GEMINI_API_KEY
