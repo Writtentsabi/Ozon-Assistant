@@ -202,6 +202,31 @@ async function processYouTubeVideo(promptText) {
 	}
 }
 
+// --- PAXSENIX MODELS LIST HELPER ---
+async function getPaxSenixModelsList() {
+	try {
+		const response = await fetch("https://api.paxsenix.org/v1/models", {
+			method: "GET",
+			headers: {
+				"Authorization": `Bearer ${process.env.PAXSENIX_API_KEY}`,
+				"Content-Type": "application/json"
+			}
+		});
+
+		if (!response.ok) {
+			throw new Error(`HTTP Error: ${response.status}`);
+		}
+
+		const data = await response.json();
+		const modelIds = data.data.map(model => model.id);
+		console.log("Λίστα με όλα τα PaxSenix model IDs:", modelIds);
+		return modelIds;
+	} catch (error) {
+		console.error("Σφάλμα κατά την ανάκτηση των PaxSenix μοντέλων:", error);
+		return [];
+	}
+}
+
 const safety = [{
 	category: "HARM_CATEGORY_HARASSMENT",
 	threshold: "BLOCK_ONLY_HIGH"
@@ -764,7 +789,7 @@ app.post('/api/chat', async (req, res) => {
 				"Content-Type": "application/json"
 			},
 			body: JSON.stringify({
-				model: CHAT_MODEL, // Χρησιμοποιεί το ίδιο ακριβώς μοντέλο με το CHAT_MODEL
+				model: "gpt-4o-mini", // Χρησιμοποιεί υποστηριζόμενο μοντέλο για το PaxSenix
 				messages: [{
 					role: 'system',
 					content: SYSTEM_INSTRUCTION
