@@ -757,8 +757,7 @@ app.post('/api/chat', async (req, res) => {
 		const freeModelsChain = [
 			"google/gemma-4-26b-a4b-it:free",
 			"meta-llama/llama-3.3-70b-instruct:free",
-			"qwen/qwen-2.5-72b-instruct:free",
-			"mistralai/mistral-small-3.1-24b-instruct:free"
+			"qwen/qwen-2.5-72b-instruct:free"
 		];
 
 		// Βήμα 1: Αποστολή στο OpenRouter για ταξινόμηση πρόθεσης (Router) με fallback chain
